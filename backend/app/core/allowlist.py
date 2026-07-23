@@ -96,15 +96,25 @@ ALLOWED_COMMANDS: dict[str, AllowedCommandSpec] = {
     "ping": AllowedCommandSpec(allowed_flags=["-c", "-i", "-W", "-s", "-q"]),
     "traceroute": AllowedCommandSpec(allowed_flags=["-m", "-n", "-q", "-w"]),
     "ip": AllowedCommandSpec(allowed_flags=["route", "link", "addr", "show", "-s", "-4", "-6"]),
-    "ss": AllowedCommandSpec(allowed_flags=["-tlnp", "-ulnp", "-tulpn", "-a", "-s", "-t", "-u", "-l", "-p", "-n"]),
+    "ss": AllowedCommandSpec(
+        allowed_flags=["-tlnp", "-ulnp", "-tulpn", "-tulnp", "-a", "-s", "-t", "-u", "-l", "-p", "-n"]
+    ),
     "dig": AllowedCommandSpec(allowed_flags=["+time=", "+tries=", "+short", "A", "AAAA", "MX", "TXT", "NS", "ANY"]),
     "nslookup": AllowedCommandSpec(allowed_flags=[]),
     "openssl": AllowedCommandSpec(
         allowed_flags=["s_client", "x509", "-connect", "-servername", "-enddate", "-noout", "-dates", "-issuer"]
     ),
-    "dmesg": AllowedCommandSpec(allowed_flags=["--level=", "-T", "-L", "-e", "-k"]),
+    "dmesg": AllowedCommandSpec(allowed_flags=["--level=", "--level", "--time-format=iso", "-T", "-L", "-e", "-k"]),
     "uptime": AllowedCommandSpec(allowed_flags=[]),
     "uname": AllowedCommandSpec(allowed_flags=["-a", "-r", "-m", "-s", "-v"]),
+    "tail": AllowedCommandSpec(
+        allowed_flags=["-n", "-f"],
+        restricted_paths=["/var/log"],
+    ),
+    "head": AllowedCommandSpec(
+        allowed_flags=["-n"],
+        restricted_paths=["/var/log"],
+    ),
 }
 
 
@@ -138,7 +148,10 @@ def validate_command(command: str, args: list[str] | None = None) -> tuple[bool,
 
     # Check 4: If command has path restrictions (e.g., cat, du, ls), verify path arguments
     if spec.restricted_paths:
-        paths = [a for a in args_list if not a.startswith("-")]
+        # Only arguments starting with '/' are filesystem paths.
+        # This avoids false positives on flag values like '50' (from -n 50)
+        # or domain names like 'google.com'.
+        paths = [a for a in args_list if a.startswith("/")]
         for path in paths:
             clean_path = path.strip()
             # Must start with one of the allowed restricted path prefixes

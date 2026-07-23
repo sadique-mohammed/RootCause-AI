@@ -55,6 +55,10 @@ async def execute_tool(name: str, args: dict[str, Any], ssh_runner: SSHRunner) -
     try:
         return await tool.func(ssh_runner=ssh_runner, **args)
     except Exception as err:
+        # This is the outermost safety net for the AI reasoning loop.
+        # Bad LLM-generated args (TypeError, KeyError, ValueError) must
+        # never crash the entire diagnosis; we return a structured error
+        # ToolOutput instead so the planner can recover gracefully.
         return ToolOutput(
             tool_name=name,
             stdout="",
