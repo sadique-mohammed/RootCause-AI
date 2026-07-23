@@ -1,0 +1,25 @@
+# RootCause AI — Local Development Stack
+# Usage: docker compose up -d
+
+services:
+  # PostgreSQL database
+  db:
+    image: postgres:16-alpine
+    container_name: rootcause-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rootcause
+      POSTGRES_PASSWORD: rootcause
+      POSTGRES_DB: rootcause_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rootcause -d rootcause_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
