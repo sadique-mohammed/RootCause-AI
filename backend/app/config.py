@@ -30,16 +30,39 @@ class Settings(BaseSettings):
     # AI / LLM Settings
     openai_api_key: str = Field(default="", description="OpenAI API key")
     openai_model: str = Field(default="gpt-4o", description="OpenAI model identifier")
-    ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama API base URL")
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        description="Ollama API base URL",
+    )
     ollama_model: str = Field(default="llama3.1:8b", description="Ollama local model name")
     litellm_provider: Literal["openai", "ollama"] = Field(
         default="ollama", description="Active LLM provider route"
     )
+    litellm_timeout: int = Field(
+        default=30,
+        description="Per-call timeout in seconds for LiteLLM requests",
+    )
+
+    # System Prompt — loaded from SYSTEM_PROMPT env var.
+    # SECURITY: Never hardcode the full prompt here. Keep it in .env (gitignored).
+    system_prompt: str = Field(
+        default="You are a systems diagnostics assistant.",
+        description="SRE agent system prompt (loaded from SYSTEM_PROMPT env var)",
+    )
 
     # Reasoning Engine Settings
-    max_tool_iterations: int = Field(default=15, description="Max diagnostic tool calls per run")
-    diagnosis_timeout_seconds: int = Field(default=120, description="Max diagnosis execution time in seconds")
-    max_output_length: int = Field(default=2000, description="Max tool stdout character length before truncation")
+    max_tool_iterations: int = Field(
+        default=15,
+        description="Max diagnostic tool calls per run",
+    )
+    diagnosis_timeout_seconds: int = Field(
+        default=120,
+        description="Max diagnosis execution time in seconds",
+    )
+    max_output_length: int = Field(
+        default=2000,
+        description="Max tool stdout character length before truncation",
+    )
 
     # App Settings
     app_env: Literal["development", "production", "testing"] = Field(default="development")
