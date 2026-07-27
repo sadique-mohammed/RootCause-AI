@@ -69,3 +69,21 @@ def test_unrestricted_cat_path_rejection() -> None:
     allowed, reason = validate_command("cat", ["/etc/shadow"])
     assert allowed is False
     assert "restricted path" in reason.lower()
+
+
+def test_modifying_systemctl_operation_is_rejected() -> None:
+    """Read-only systemctl access must not permit service state changes."""
+    allowed, _ = validate_command("systemctl", ["restart", "nginx"])
+    assert allowed is False
+
+
+def test_modifying_ip_operation_is_rejected() -> None:
+    """Read-only network inspection must not permit link changes."""
+    allowed, _ = validate_command("ip", ["link", "set", "eth0", "down"])
+    assert allowed is False
+
+
+def test_relative_path_traversal_is_rejected() -> None:
+    """Restricted file tools must not escape their explicit path boundary."""
+    allowed, _ = validate_command("cat", ["../../etc/shadow"])
+    assert allowed is False

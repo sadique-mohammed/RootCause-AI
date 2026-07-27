@@ -30,6 +30,9 @@ class DiagnosisRun(SQLModel, table=True):
     root_cause_category: str | None = None
     confidence: float | None = None
     suggested_fix: str | None = None
+    summary: str | None = None
+    inconclusive: bool = False
+    alternative_hypotheses: list[str] = Field(default_factory=list, sa_column=Column(JSON_VARIANT))
 
     status: str = Field(default="pending", index=True)
     commands_executed: int = Field(default=0)

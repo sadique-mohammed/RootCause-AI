@@ -1,13 +1,16 @@
 """Core reasoning engine loop."""
 
+import asyncio
 import json
 import logging
+import time
 import uuid
 from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import backend.app.tools  # noqa: F401  # Registers production tools on import.
 from backend.app.api.schemas import DiagnosisReport
 from backend.app.config import settings
 from backend.app.core.llm import chat_completion
@@ -38,6 +41,21 @@ def _extract_json_from_text(text: str) -> str:
         text = text[:-3]
 
     return text.strip()
+
+
+def _evidence_is_grounded(report: DiagnosisReport, observations: list[tuple[str, str]]) -> bool:
+    """Require every cited raw-output snippet to come from an executed tool."""
+    if not report.evidence:
+        return False
+    for evidence in report.evidence:
+        if not evidence.raw_output.strip():
+            return False
+        if not any(
+            evidence.tool_name == tool_name and evidence.raw_output.strip() in output
+            for tool_name, output in observations
+        ):
+            return False
+    return True
 
 
 async def run_diagnosis(
@@ -80,11 +98,25 @@ async def run_diagnosis(
     ]
 
     tools = get_all_tool_schemas()
+    observations: list[tuple[str, str]] = []
+    configured_timeout = getattr(settings, "diagnosis_timeout_seconds", 120)
+    timeout_seconds = configured_timeout if isinstance(configured_timeout, (int, float)) else 120
+    deadline = time.monotonic() + timeout_seconds
+    tool_calls_executed = 0
 
     for iteration in range(1, settings.max_tool_iterations + 1):
         logger.info("Diagnosis loop iteration %d/%d", iteration, settings.max_tool_iterations)
 
-        response = await chat_completion(messages=messages, tools=tools)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+
+        try:
+            response = await asyncio.wait_for(
+                chat_completion(messages=messages, tools=tools), timeout=remaining
+            )
+        except TimeoutError:
+            break
 
         # 1. Handle Hard LLM Errors
         if response.error:
@@ -118,11 +150,21 @@ async def run_diagnosis(
 
         # 2. Handle Tool Calls
         if response.tool_calls:
+            if tool_calls_executed + len(response.tool_calls) > settings.max_tool_iterations:
+                break
             for tc in response.tool_calls:
                 logger.info("Executing tool %s with args %s", tc.name, tc.arguments)
-                tool_output = await execute_tool(
-                    tc.name, tc.arguments, ssh_runner=ssh_runner
-                )
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    tool_output = await asyncio.wait_for(
+                        execute_tool(tc.name, tc.arguments, ssh_runner=ssh_runner),
+                        timeout=remaining,
+                    )
+                except TimeoutError:
+                    break
+                tool_calls_executed += 1
 
                 # Format output
                 if tool_output.allowed:
@@ -135,6 +177,7 @@ async def run_diagnosis(
                     raw_text = f"BLOCKED BY SECURITY ALLOWLIST: {tool_output.stderr}"
 
                 truncated_text = _truncate_output(raw_text)
+                observations.append((tc.name, raw_text))
 
                 messages.append(
                     {
@@ -155,7 +198,7 @@ async def run_diagnosis(
                 report = DiagnosisReport.model_validate_json(raw_json)
 
                 # Check confidence/evidence rules
-                if not report.evidence or report.confidence < 0.65:
+                if not _evidence_is_grounded(report, observations) or report.confidence < 0.65:
                     report.inconclusive = True
 
                 await _persist_to_db(run_db, report, ssh_runner, db_session)
@@ -207,6 +250,9 @@ async def _persist_to_db(
     run_db.root_cause_category = report.root_cause_category
     run_db.confidence = report.confidence
     run_db.suggested_fix = report.suggested_fix
+    run_db.summary = report.summary
+    run_db.inconclusive = report.inconclusive
+    run_db.alternative_hypotheses = report.alternative_hypotheses
     run_db.commands_executed = len(ssh_runner.command_history)
     run_db.completed_at = datetime.now(UTC)
 

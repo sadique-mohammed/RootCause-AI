@@ -27,7 +27,7 @@ uv run pytest
 User → [Next.js Frontend] → [FastAPI Backend] → [AI Reasoning Engine] → [Diagnostic Tools] → [SSH Runner] → [Target VM]
 ```
 
-<!-- ## Documentation
+## Documentation
 
 See [`docs/`](./docs/) for full project documentation:
 - [Product Requirements](./docs/01-product-requirements.md)
@@ -39,7 +39,10 @@ See [`docs/`](./docs/) for full project documentation:
 - [Anti-Scope & Decisions](./docs/07-anti-scope-and-decisions.md)
 - [Learning Roadmap](./docs/08-learning-roadmap.md)
 - [Competitive Analysis](./docs/09-competitive-analysis.md)
-- [Tech Stack](./docs/10-tech-stack.md) -->
+- [Tech Stack](./docs/10-tech-stack.md)
+- [Systems Design](./docs/11-systems-design.md)
+- [API Contracts](./docs/12-api-contracts.md)
+- [Project Progress](./docs/13-project-progress.md)
 
 ## Tech Stack
 

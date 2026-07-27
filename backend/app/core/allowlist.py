@@ -1,5 +1,8 @@
 """Hardcoded command allowlist validator for SSH command safety."""
 
+import posixpath
+import re
+
 from pydantic import BaseModel, Field
 
 # Blocked base commands that are never permitted under any circumstances
@@ -117,6 +120,59 @@ ALLOWED_COMMANDS: dict[str, AllowedCommandSpec] = {
     ),
 }
 
+_SAFE_VALUE = re.compile(r"^[A-Za-z0-9_./:@%+=,-]+$")
+_SAFE_POSITIONAL_VALUES = {
+    "systemctl": {"status", "list-units", "is-active", "is-failed"},
+    "ip": {"route", "link", "addr", "show"},
+}
+_BLOCKED_POSITIONAL_OPERATIONS = {"set", "add", "del", "delete", "restart", "start", "stop", "enable", "disable"}
+
+
+def _path_matches_prefix(path: str, prefix: str) -> bool:
+    """Match a path only when it is the prefix itself or a child of it."""
+    return path == prefix or path.startswith(f"{prefix}/")
+
+
+def _validate_arguments(command: str, args: list[str], spec: AllowedCommandSpec) -> tuple[bool, str]:
+    """Validate flags, positional values, and restricted paths."""
+    path_restricted = bool(spec.restricted_paths)
+
+    for index, arg in enumerate(args):
+        if not arg or not _SAFE_VALUE.fullmatch(arg):
+            return False, f"Argument '{arg}' contains unsupported characters"
+
+        if arg.startswith("/"):
+            if not path_restricted:
+                return False, f"Absolute path '{arg}' is not permitted for '{command}'"
+            normalized = posixpath.normpath(arg)
+            if normalized != arg:
+                return False, f"Path traversal is not permitted: '{arg}'"
+            if not any(_path_matches_prefix(arg, prefix) for prefix in spec.restricted_paths):
+                return False, f"Path '{arg}' is outside the restricted paths for '{command}'"
+            continue
+
+        is_flag = arg.startswith("-") or arg.startswith("+")
+        if is_flag:
+            exact_match = arg in spec.allowed_flags
+            prefix_match = any(flag.endswith("=") and arg.startswith(flag) for flag in spec.allowed_flags)
+            if not (exact_match or prefix_match):
+                return False, f"Flag '{arg}' is not permitted for '{command}'"
+        elif (
+            command in _SAFE_POSITIONAL_VALUES
+            and index == 0
+            and arg not in _SAFE_POSITIONAL_VALUES[command]
+        ) or (command in {"systemctl", "ip"} and arg in _BLOCKED_POSITIONAL_OPERATIONS):
+            return False, f"Operation '{arg}' is not permitted for '{command}'"
+
+    if path_restricted and command in {"cat", "du", "ls", "tail", "head"}:
+        positional_paths = [arg for arg in args if not arg.startswith("-") and not arg.startswith("+")]
+        if command == "cat" and any(not arg.startswith("/") for arg in positional_paths):
+            return False, "cat requires absolute, explicitly permitted paths"
+        if command in {"tail", "head"} and not any(arg.startswith("/") for arg in args):
+            return False, f"{command} requires an absolute, explicitly permitted path"
+
+    return True, "OK"
+
 
 def validate_command(command: str, args: list[str] | None = None) -> tuple[bool, str]:
     """
@@ -145,21 +201,4 @@ def validate_command(command: str, args: list[str] | None = None) -> tuple[bool,
         return False, f"Command '{base_cmd}' is not present in the allowed commands set"
 
     spec = ALLOWED_COMMANDS[base_cmd]
-
-    # Check 4: If command has path restrictions (e.g., cat, du, ls), verify path arguments
-    if spec.restricted_paths:
-        # Only arguments starting with '/' are filesystem paths.
-        # This avoids false positives on flag values like '50' (from -n 50)
-        # or domain names like 'google.com'.
-        paths = [a for a in args_list if a.startswith("/")]
-        for path in paths:
-            clean_path = path.strip()
-            # Must start with one of the allowed restricted path prefixes
-            if not any(clean_path.startswith(prefix) for prefix in spec.restricted_paths):
-                msg = (
-                    f"Path '{clean_path}' for command '{base_cmd}' "
-                    f"is outside restricted path prefixes: {spec.restricted_paths}"
-                )
-                return False, msg
-
-    return True, "OK"
+    return _validate_arguments(base_cmd, args_list, spec)

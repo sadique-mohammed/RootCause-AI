@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from backend.app.api.schemas import DiagnoseRequest, DiagnosisRunRead, EvidenceItemRead
+from backend.app.api.schemas import CommandLogRead, DiagnoseRequest, DiagnosisRunRead, EvidenceItemRead
 from backend.app.config import settings
 from backend.app.core.reasoning import run_diagnosis
 from backend.app.core.ssh_runner import SSHRunner
@@ -113,5 +113,36 @@ async def get_diagnosis(
         root_cause_category=run_db.root_cause_category,
         confidence=run_db.confidence,
         suggested_fix=run_db.suggested_fix,
+        summary=run_db.summary,
+        inconclusive=run_db.inconclusive,
+        alternative_hypotheses=run_db.alternative_hypotheses,
         evidence=evidence,
     )
+
+
+@router.get("/diagnose/{run_id}/commands", response_model=list[CommandLogRead])
+async def get_command_log(
+    run_id: uuid.UUID,
+    db_session: AsyncSession = Depends(get_db_session),  # noqa: B008
+) -> list[CommandLogRead]:
+    """Return the auditable command log for a diagnosis run."""
+    from backend.app.db.models import CommandLog
+
+    if not await db_session.get(DiagnosisRun, run_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis run not found")
+
+    stmt = select(CommandLog).where(CommandLog.run_id == run_id).order_by("executed_at")
+    result = await db_session.execute(stmt)
+    return [
+        CommandLogRead(
+            id=command.id,
+            run_id=command.run_id,
+            command=command.command,
+            args=command.args,
+            exit_code=command.exit_code,
+            duration_ms=command.duration_ms,
+            allowed=command.allowed,
+            executed_at=command.executed_at,
+        )
+        for command in result.scalars().all()
+    ]

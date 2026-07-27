@@ -68,7 +68,8 @@ async def test_run_diagnosis_immediate_success(
     report = await run_diagnosis("Test incident", ssh_runner)
 
     assert report.root_cause == "Test"
-    assert report.inconclusive is False
+    # A report without an executed tool observation cannot be considered grounded.
+    assert report.inconclusive is True
     mock_execute.assert_not_called()
     assert mock_chat.call_count == 1
 

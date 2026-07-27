@@ -113,14 +113,12 @@ async def test_incidents_catalog(async_client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_incidents_seed_success(async_client: AsyncClient) -> None:
-    """Test incident seeding."""
+    """Do not claim seeding success before the harness is connected."""
     response = await async_client.post(
         "/api/v1/incidents/seed",
-        json={"incident_id": "01"},
+        json={"incident_id": "10"},
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "success"
+    assert response.status_code == 501
 
 
 @pytest.mark.asyncio
@@ -130,4 +128,13 @@ async def test_incidents_seed_not_found(async_client: AsyncClient) -> None:
         "/api/v1/incidents/seed",
         json={"incident_id": "invalid_id"},
     )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_command_log_not_found(async_client: AsyncClient) -> None:
+    """The command log endpoint must preserve the API contract."""
+    import uuid
+
+    response = await async_client.get(f"/api/v1/diagnose/{uuid.uuid4()}/commands")
     assert response.status_code == 404

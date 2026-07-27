@@ -29,23 +29,16 @@ class SeedResponse(BaseModel):
     message: str
 
 
-# Hardcoded catalog for now
+# Only incidents with real scripts are advertised. The harness must not claim
+# success until it has executed and verified the requested state transition.
 CATALOG = [
-    IncidentCatalogRead(
-        id="01",
-        name="Process Kill",
-        description="A critical process (nginx) is constantly crashing or being killed.",
-        category="process",
-        difficulty="easy",
-        seed_script_path="incidents/01-process-kill/seed.sh",
-    ),
     IncidentCatalogRead(
         id="10",
         name="TCP Retransmissions",
         description="High packet loss causing TCP retransmissions.",
         category="network",
         difficulty="hard",
-        seed_script_path="incidents/10-tcp-retransmissions/seed.sh",
+        seed_script_path="incidents/seed/10-tcp-retransmissions.sh",
     ),
 ]
 
@@ -66,18 +59,16 @@ async def seed_incident(request: SeedRequest) -> SeedResponse:
             detail="Incident ID not found in catalog.",
         )
 
-    # In a real setup, we would execute the seed script over SSH here.
-    # For security and simplicity in Phase 3, we just mock the response.
-    return SeedResponse(
-        status="success",
-        message=f"Incident {request.incident_id} successfully seeded on target."
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Incident execution harness is not connected to a target VM yet.",
     )
 
 
 @router.post("/incidents/reset", response_model=SeedResponse)
 async def reset_incident(request: SeedRequest) -> SeedResponse:
     """Run an incident reset script on the target VM."""
-    return SeedResponse(
-        status="success",
-        message="Target VM successfully reset."
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Incident reset harness is not connected to a target VM yet.",
     )

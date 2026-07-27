@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,7 @@ class EvidenceItem(BaseModel):
 
     step: int = Field(description="Order this evidence was collected (1-indexed)")
     tool_name: str = Field(description="Which diagnostic tool was called")
-    tool_args: dict[str, str] = Field(description="Arguments passed to the tool")
+    tool_args: dict[str, Any] = Field(description="Arguments passed to the tool")
     raw_output: str = Field(description="Command output snippet")
     key_finding: str = Field(
         description="What the agent observed. Must cite specific values/lines."
@@ -106,9 +106,25 @@ class DiagnosisRunRead(BaseModel):
     root_cause_category: str | None
     confidence: float | None
     suggested_fix: str | None
+    summary: str | None
+    inconclusive: bool
+    alternative_hypotheses: list[str]
 
     # Nested evidence
     evidence: list[EvidenceItemRead] = Field(default_factory=list)
+
+
+class CommandLogRead(BaseModel):
+    """API view of one executed or blocked command."""
+
+    id: uuid.UUID
+    run_id: uuid.UUID
+    command: str
+    args: list[str]
+    exit_code: int
+    duration_ms: int
+    allowed: bool
+    executed_at: datetime
 
 
 class HealthResponse(BaseModel):
