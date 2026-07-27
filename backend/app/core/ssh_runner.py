@@ -41,6 +41,7 @@ class SSHRunner:
         self.password = password or settings.target_password
         self.timeout = timeout
         self._client: paramiko.SSHClient | None = None
+        self.command_history: list[CommandResult] = []
 
     def connect(self) -> None:
         """Establish SSH connection using Paramiko."""
@@ -90,7 +91,7 @@ class SSHRunner:
         is_allowed, reason = validate_command(command, args_list)
         if not is_allowed:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            return CommandResult(
+            res = CommandResult(
                 command=command,
                 args=args_list,
                 stdout="",
@@ -99,13 +100,15 @@ class SSHRunner:
                 duration_ms=duration_ms,
                 allowed=False,
             )
+            self.command_history.append(res)
+            return res
 
         # Step 2: Ensure SSH connection is active
         try:
             self.connect()
         except Exception as err:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            return CommandResult(
+            res = CommandResult(
                 command=command,
                 args=args_list,
                 stdout="",
@@ -114,6 +117,8 @@ class SSHRunner:
                 duration_ms=duration_ms,
                 allowed=True,
             )
+            self.command_history.append(res)
+            return res
 
         assert self._client is not None
 
@@ -130,7 +135,7 @@ class SSHRunner:
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
 
-            return CommandResult(
+            res = CommandResult(
                 command=command,
                 args=args_list,
                 stdout=stdout_text,
@@ -139,9 +144,11 @@ class SSHRunner:
                 duration_ms=duration_ms,
                 allowed=True,
             )
+            self.command_history.append(res)
+            return res
         except Exception as err:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            return CommandResult(
+            res = CommandResult(
                 command=command,
                 args=args_list,
                 stdout="",
@@ -150,6 +157,8 @@ class SSHRunner:
                 duration_ms=duration_ms,
                 allowed=True,
             )
+            self.command_history.append(res)
+            return res
 
     def disconnect(self) -> None:
         """Close Paramiko SSH channel."""

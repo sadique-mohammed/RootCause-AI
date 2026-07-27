@@ -2,14 +2,17 @@
 
 import json
 import logging
+import uuid
 from typing import Any
 
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.schemas import DiagnosisReport
 from backend.app.config import settings
 from backend.app.core.llm import chat_completion
 from backend.app.core.ssh_runner import SSHRunner
+from backend.app.db.models import CommandLog, DiagnosisRun, EvidenceItemDB
 from backend.app.tools.registry import execute_tool, get_all_tool_schemas
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,8 @@ def _extract_json_from_text(text: str) -> str:
 async def run_diagnosis(
     incident_description: str,
     ssh_runner: SSHRunner,
+    run_id: uuid.UUID | None = None,
+    db_session: AsyncSession | None = None,
 ) -> DiagnosisReport:
     """
     Execute a full diagnostic investigation.
@@ -49,7 +54,16 @@ async def run_diagnosis(
     2. If it returns tool calls, execute them, truncate output, append, and continue.
     3. If it returns text, try to parse as DiagnosisReport JSON.
     4. Guard against >15 iterations.
+    5. Save everything to DB if provided.
     """
+
+    # 0. Set status to running in DB
+    run_db = None
+    if run_id and db_session:
+        run_db = await db_session.get(DiagnosisRun, run_id)
+        if run_db:
+            run_db.status = "running"
+            await db_session.commit()
     system_prompt = (
         settings.system_prompt
         + "\n\nWhen you are ready to produce your final diagnosis, or if you run out of ideas, "
@@ -75,7 +89,7 @@ async def run_diagnosis(
         # 1. Handle Hard LLM Errors
         if response.error:
             logger.error("Reasoning loop aborted due to LLM error: %s", response.content)
-            return DiagnosisReport(
+            final_report = DiagnosisReport(
                 root_cause="LLM routing or API failure",
                 root_cause_category="unknown",
                 confidence=0.0,
@@ -84,6 +98,8 @@ async def run_diagnosis(
                 inconclusive=True,
                 summary=f"Failed to diagnose due to backend AI error: {response.content}",
             )
+            await _persist_to_db(run_db, final_report, ssh_runner, db_session)
+            return final_report
 
         # Append assistant's response to history
         assistant_msg: dict[str, Any] = {"role": "assistant"}
@@ -142,6 +158,7 @@ async def run_diagnosis(
                 if not report.evidence or report.confidence < 0.65:
                     report.inconclusive = True
 
+                await _persist_to_db(run_db, report, ssh_runner, db_session)
                 return report
 
             except ValidationError as e:
@@ -159,7 +176,7 @@ async def run_diagnosis(
 
     # 4. Hit iteration limit
     logger.warning("Max iterations (%d) reached.", settings.max_tool_iterations)
-    return DiagnosisReport(
+    final_report = DiagnosisReport(
         root_cause="Investigation timed out / max iterations reached.",
         root_cause_category="unknown",
         confidence=0.0,
@@ -168,3 +185,72 @@ async def run_diagnosis(
         inconclusive=True,
         summary="The AI agent ran out of iterations before determining a conclusive root cause.",
     )
+    await _persist_to_db(run_db, final_report, ssh_runner, db_session)
+    return final_report
+
+
+async def _persist_to_db(
+    run_db: DiagnosisRun | None,
+    report: DiagnosisReport,
+    ssh_runner: SSHRunner,
+    db_session: AsyncSession | None,
+) -> None:
+    """Helper to persist the diagnosis run, evidence, and commands to the DB."""
+    if not run_db or not db_session:
+        return
+
+    from datetime import UTC, datetime
+
+    # 1. Update the DiagnosisRun
+    run_db.status = "inconclusive" if report.inconclusive else "completed"
+    run_db.root_cause = report.root_cause
+    run_db.root_cause_category = report.root_cause_category
+    run_db.confidence = report.confidence
+    run_db.suggested_fix = report.suggested_fix
+    run_db.commands_executed = len(ssh_runner.command_history)
+    run_db.completed_at = datetime.now(UTC)
+
+    # Calculate duration safely
+    if run_db.created_at:
+        created_at = run_db.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        delta = run_db.completed_at - created_at
+        run_db.duration_seconds = delta.total_seconds()
+
+    db_session.add(run_db)
+
+    # 2. Add EvidenceItems
+    for ev in report.evidence:
+        ev_db = EvidenceItemDB(
+            run_id=run_db.id,
+            step_number=ev.step,
+            tool_name=ev.tool_name,
+            tool_args=ev.tool_args,
+            raw_output=ev.raw_output,
+            key_finding=ev.key_finding,
+            relevance=ev.relevance,
+            supports_conclusion=ev.supports_conclusion,
+        )
+        db_session.add(ev_db)
+
+    # 3. Add CommandLogs
+    for cmd in ssh_runner.command_history:
+        cmd_db = CommandLog(
+            run_id=run_db.id,
+            command=cmd.command,
+            args=cmd.args,
+            stdout=cmd.stdout,
+            stderr=cmd.stderr,
+            exit_code=cmd.exit_code,
+            duration_ms=cmd.duration_ms,
+            allowed=cmd.allowed,
+            executed_at=cmd.timestamp,
+        )
+        db_session.add(cmd_db)
+
+    try:
+        await db_session.commit()
+    except Exception as e:
+        logger.error("Failed to commit diagnosis run to DB: %s", e)
+        await db_session.rollback()

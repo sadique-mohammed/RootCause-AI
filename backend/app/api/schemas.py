@@ -1,5 +1,7 @@
 """Pydantic schemas for the REST API and AI Reasoning output."""
 
+import uuid
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -61,3 +63,54 @@ class DiagnosisReport(BaseModel):
     summary: str = Field(
         description="One-paragraph executive summary suitable for a status update."
     )
+
+
+class DiagnoseRequest(BaseModel):
+    """Input payload to trigger a new diagnostic run."""
+
+    target_host: str | None = Field(
+        default=None,
+        description="IP/Host of target VM. Overrides env settings if provided."
+    )
+    incident_description: str = Field(description="Description of the incident or symptoms")
+
+    # Optional runtime SSH credentials override
+    ssh_username: str | None = None
+    ssh_key_path: str | None = None
+    ssh_password: str | None = None
+
+
+class EvidenceItemRead(EvidenceItem):
+    """API view of an EvidenceItem, extending it with DB IDs."""
+    id: uuid.UUID
+    run_id: uuid.UUID
+    created_at: datetime
+
+
+class DiagnosisRunRead(BaseModel):
+    """API view of a full DiagnosisRun."""
+
+    id: uuid.UUID
+    target_host: str
+    incident_description: str
+
+    status: str
+    commands_executed: int
+    duration_seconds: float
+
+    created_at: datetime
+    completed_at: datetime | None
+
+    # Fields from DiagnosisReport
+    root_cause: str | None
+    root_cause_category: str | None
+    confidence: float | None
+    suggested_fix: str | None
+
+    # Nested evidence
+    evidence: list[EvidenceItemRead] = Field(default_factory=list)
+
+
+class HealthResponse(BaseModel):
+    status: str
+    version: str

@@ -19,17 +19,15 @@ dependencies = [
     "alembic>=1.14",
     "asyncpg>=0.30",
     "python-dotenv>=1.0",
-
     # SSH & Networking
     "paramiko>=5.0",
     "scapy>=2.6",
-
     # AI / LLM
     "openai>=1.60",
     "litellm>=1.55",
-
     # HTTP Client
     "httpx>=0.28",
+    "greenlet>=3.5.4",
 ]
 
 [dependency-groups]
@@ -41,6 +39,7 @@ dev = [
     "mypy>=1.13",
     "pre-commit>=4.0",
     "types-paramiko>=5.0.0.20260617",
+    "aiosqlite>=0.22.1",
 ]
 
 [tool.ruff]
