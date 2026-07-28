@@ -254,7 +254,7 @@ async def _persist_to_db(
     run_db.inconclusive = report.inconclusive
     run_db.alternative_hypotheses = report.alternative_hypotheses
     run_db.commands_executed = len(ssh_runner.command_history)
-    run_db.completed_at = datetime.now(UTC)
+    run_db.completed_at = datetime.now(UTC).replace(tzinfo=None)
 
     # Calculate duration safely
     if run_db.created_at:

@@ -112,13 +112,23 @@ async def test_incidents_catalog(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_incidents_seed_success(async_client: AsyncClient) -> None:
-    """Do not claim seeding success before the harness is connected."""
+@patch("backend.app.api.routes.incidents.paramiko.SSHClient")
+async def test_incidents_seed_success(mock_ssh_client: MagicMock, async_client: AsyncClient) -> None:
+    """Test incident seeding without real SSH connection."""
+    # Setup mock to return exit code 0
+    mock_client_instance = MagicMock()
+    mock_ssh_client.return_value = mock_client_instance
+    mock_stdout = MagicMock()
+    mock_stdout.channel.recv_exit_status.return_value = 0
+    mock_stdout.read.return_value = b"success"
+    mock_client_instance.exec_command.return_value = (MagicMock(), mock_stdout, MagicMock())
+
     response = await async_client.post(
         "/api/v1/incidents/seed",
-        json={"incident_id": "10"},
+        json={"incident_id": "04"},
     )
-    assert response.status_code == 501
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
 
 
 @pytest.mark.asyncio

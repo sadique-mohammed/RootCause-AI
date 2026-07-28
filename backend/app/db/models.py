@@ -39,7 +39,7 @@ class DiagnosisRun(SQLModel, table=True):
     duration_seconds: float = Field(default=0.0)
 
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None),
         sa_column_kwargs={"server_default": text("TIMEZONE('utc', CURRENT_TIMESTAMP)")},
     )
     completed_at: datetime | None = None
@@ -67,7 +67,7 @@ class EvidenceItemDB(SQLModel, table=True):
     supports_conclusion: bool
 
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None),
         sa_column_kwargs={"server_default": text("TIMEZONE('utc', CURRENT_TIMESTAMP)")},
     )
 
@@ -95,6 +95,6 @@ class CommandLog(SQLModel, table=True):
     allowed: bool
 
     executed_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None),
         sa_column_kwargs={"server_default": text("TIMEZONE('utc', CURRENT_TIMESTAMP)")},
     )

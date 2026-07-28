@@ -20,7 +20,7 @@ class CommandResult(BaseModel):
     stderr: str = Field(default="", description="Captured standard error")
     exit_code: int = Field(default=0, description="Process exit code (-1 for connection/execution error)")
     duration_ms: int = Field(default=0, description="Execution duration in milliseconds")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC), description="Execution timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None), description="Execution timestamp")
     allowed: bool = Field(default=True, description="Whether the command passed allowlist validation")
 
 
