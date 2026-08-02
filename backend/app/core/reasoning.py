@@ -34,15 +34,28 @@ def _truncate_output(text: str) -> str:
 def _extract_json_from_text(text: str) -> str:
     """Attempt to extract a JSON object from markdown code blocks or plain text."""
     text = text.strip()
-    if text.startswith("```json"):
-        text = text[7:]
-    elif text.startswith("```"):
-        text = text[3:]
+    
+    # Try to find JSON between ```json and ```
+    start_idx = text.find("```json")
+    if start_idx != -1:
+        end_idx = text.find("```", start_idx + 7)
+        if end_idx != -1:
+            return text[start_idx + 7:end_idx].strip()
+            
+    # Try to find JSON between ``` and ```
+    start_idx = text.find("```")
+    if start_idx != -1:
+        end_idx = text.find("```", start_idx + 3)
+        if end_idx != -1:
+            return text[start_idx + 3:end_idx].strip()
 
-    if text.endswith("```"):
-        text = text[:-3]
+    # Fallback to finding the first { and last }
+    start_idx = text.find("{")
+    end_idx = text.rfind("}")
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        return text[start_idx:end_idx+1].strip()
 
-    return text.strip()
+    return text
 
 
 def _evidence_is_grounded(report: DiagnosisReport, observations: list[tuple[str, str]]) -> bool:
@@ -115,11 +128,16 @@ async def run_diagnosis(
     configured_timeout = getattr(settings, "diagnosis_timeout_seconds", 120)
     timeout_seconds = configured_timeout if isinstance(configured_timeout, (int, float)) else 120
     deadline = time.monotonic() + timeout_seconds
-    tool_calls_executed = 0
+    deadline = time.monotonic() + getattr(settings, "diagnosis_timeout_seconds", 120)
+    iterations = 0
 
     try:
-        for iteration in range(1, settings.max_tool_iterations + 1):
-            logger.info("Diagnosis loop iteration %d/%d", iteration, settings.max_tool_iterations)
+        while True:
+            iterations += 1
+            if iterations > settings.max_tool_iterations:
+                break
+
+            logger.info("Diagnosis loop iteration %d/%d", iterations, settings.max_tool_iterations)
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -147,10 +165,6 @@ async def run_diagnosis(
                 await _persist_to_db(run_db, final_report, ssh_runner, db_session)
                 return final_report
 
-            # 2. Check Tool Call Budget (BEFORE appending to avoid malformed history)
-            if response.tool_calls and tool_calls_executed + len(response.tool_calls) > settings.max_tool_iterations:
-                break
-
             # Append assistant's response to history
             assistant_msg: dict[str, Any] = {"role": "assistant"}
             if response.content:
@@ -166,15 +180,18 @@ async def run_diagnosis(
                 ]
             messages.append(assistant_msg)
 
-            # 3. Execute Tool Calls
+            # 2. Handle Tool Calls
             if response.tool_calls:
                 timed_out = False
                 for tc in response.tool_calls:
-                    logger.info("Executing tool %s with args %s", tc.name, tc.arguments)
+                    logger.info("Executing tool: %s", tc.name)
+
+                    old_len = len(ssh_runner.command_history)
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         timed_out = True
                         break
+
                     try:
                         tool_output = await asyncio.wait_for(
                             execute_tool(tc.name, tc.arguments, ssh_runner=ssh_runner),
@@ -183,7 +200,24 @@ async def run_diagnosis(
                     except TimeoutError:
                         timed_out = True
                         break
-                    tool_calls_executed += 1
+
+                    # Progressively save command logs to DB
+                    if run_db and db_session and len(ssh_runner.command_history) > old_len:
+                        for cmd in ssh_runner.command_history[old_len:]:
+                            cmd_db = CommandLog(
+                                run_id=run_db.id,
+                                command=cmd.command,
+                                args=cmd.args,
+                                stdout=cmd.stdout,
+                                stderr=cmd.stderr,
+                                exit_code=cmd.exit_code,
+                                duration_ms=cmd.duration_ms,
+                                allowed=cmd.allowed,
+                                executed_at=cmd.timestamp,
+                            )
+                            db_session.add(cmd_db)
+                        with contextlib.suppress(SQLAlchemyError):
+                            await db_session.commit()
 
                     # Format output
                     if tool_output.allowed:
@@ -226,7 +260,10 @@ async def run_diagnosis(
                     return report
 
                 except ValidationError as e:
-                    logger.warning("Failed to parse DiagnosisReport JSON: %s", e)
+                    print(f"Failed to parse DiagnosisReport JSON. Error: {e}", flush=True)
+                    print(f"Raw response was: {response.content}", flush=True)
+                    print(f"Extracted JSON was: {raw_json}", flush=True)
+                    messages.append({"role": "assistant", "content": response.content})
                     messages.append(
                         {
                             "role": "user",
@@ -311,20 +348,7 @@ async def _persist_to_db(
         )
         db_session.add(ev_db)
 
-    # 3. Add CommandLogs
-    for cmd in ssh_runner.command_history:
-        cmd_db = CommandLog(
-            run_id=run_db.id,
-            command=cmd.command,
-            args=cmd.args,
-            stdout=cmd.stdout,
-            stderr=cmd.stderr,
-            exit_code=cmd.exit_code,
-            duration_ms=cmd.duration_ms,
-            allowed=cmd.allowed,
-            executed_at=cmd.timestamp,
-        )
-        db_session.add(cmd_db)
+    # CommandLogs are now saved progressively during the run.
 
     try:
         await db_session.commit()

@@ -60,7 +60,8 @@ class DiagnosisReport(BaseModel):
         default=False,
         description="True if the agent could not determine a root cause.",
     )
-    summary: str = Field(
+    summary: str | None = Field(
+        default=None,
         description="One-paragraph executive summary suitable for a status update."
     )
 
@@ -130,3 +131,5 @@ class CommandLogRead(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+    llm_provider: str | None = None
+    llm_model: str | None = None

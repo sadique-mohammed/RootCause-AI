@@ -7,6 +7,7 @@ application go through this single module.
 SECURITY: This module never logs, stores, or returns the system prompt.
 """
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -172,9 +173,10 @@ async def chat_completion(
     elif settings.litellm_provider == "gemini" and settings.gemini_api_key:
         kwargs["api_key"] = settings.gemini_api_key
 
-    # Attempt with one retry on transient failure
+    # Attempt with exponential backoff on transient failure
     last_error: str = ""
-    for attempt in range(2):
+    max_attempts = 3
+    for attempt in range(max_attempts):
         try:
             response = await litellm.acompletion(**kwargs)
 
@@ -205,29 +207,38 @@ async def chat_completion(
         except LiteLLMTimeout:
             last_error = (
                 f"LLM request timed out after {settings.litellm_timeout}s "
-                f"(attempt {attempt + 1}/2)"
+                f"(attempt {attempt + 1}/{max_attempts})"
             )
             logger.warning(last_error)
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(2 ** attempt)
 
         except LiteLLMRateLimitError:
-            last_error = f"Rate limited by {resolved_model} (attempt {attempt + 1}/2)"
+            last_error = f"Rate limited by {resolved_model} (attempt {attempt + 1}/{max_attempts})"
             logger.warning(last_error)
+            if attempt < max_attempts - 1:
+                # Gemini free tier has strict burst limits, use aggressive backoff (4s, 16s)
+                await asyncio.sleep(4 ** (attempt + 1))
 
         except LiteLLMConnectionError as err:
-            last_error = f"Cannot reach LLM provider: {err} (attempt {attempt + 1}/2)"
+            last_error = f"Cannot reach LLM provider: {err} (attempt {attempt + 1}/{max_attempts})"
             logger.warning(last_error)
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(2 ** attempt)
 
         except LiteLLMAPIError as err:
-            last_error = f"LLM API error: {err} (attempt {attempt + 1}/2)"
+            last_error = f"LLM API error: {err} (attempt {attempt + 1}/{max_attempts})"
             logger.warning(last_error)
             # Non-transient API errors — don't retry
             break
 
         except (IndexError, AttributeError, KeyError) as err:
-            last_error = f"LLM provider returned malformed structure: {err} (attempt {attempt + 1}/2)"
+            last_error = f"LLM provider returned malformed structure: {err} (attempt {attempt + 1}/{max_attempts})"
             logger.warning(last_error)
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(1)
 
-    # Both attempts failed — return structured error
+    # All attempts failed — return structured error
     logger.error("LLM call failed after retries: %s", last_error)
     return LLMResponse(
         content=f"LLM_ERROR: {last_error}",

@@ -10,6 +10,9 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from backend.app.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Incidents"])
 
@@ -175,14 +178,22 @@ def _execute_script_via_ssh(
     except HTTPException:
         raise
     except paramiko.SSHException as e:
+        logger.exception("SSH Exception during seed")
         raise HTTPException(
             status_code=500,
             detail=f"SSH connection failed: {e}",
         ) from e
     except OSError as e:
+        logger.exception("OS Error during seed")
         raise HTTPException(
             status_code=500,
             detail=f"SSH execution failed: {e}",
+        ) from e
+    except Exception as e:
+        logger.exception("Unexpected error during seed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
         ) from e
     finally:
         client.close()

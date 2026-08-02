@@ -76,26 +76,39 @@ export default function DiagnosisResult({ run, liveLogs = [] }: { run: Diagnosis
                 </p>
               </div>
 
-              {liveLogs.length > 0 && (
-                <div className="glass-panel p-4 rounded-xl border border-gray-800 bg-black/60 font-mono text-xs text-gray-400">
-                  <h4 className="text-gray-500 mb-2 flex items-center gap-2">
-                    <Terminal size={14} /> Live SSH Execution Log
-                  </h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                    {liveLogs.map((log) => (
-                      <div key={log.id} className="flex gap-2">
-                        <span className="text-gray-600">[{new Date(log.executed_at).toLocaleTimeString()}]</span>
-                        <span className="text-[var(--color-brand-cyan)]">$ {log.command}</span>
-                        {log.args && <span className="text-gray-300">{Array.isArray(log.args) ? log.args.join(' ') : log.args}</span>}
-                        {log.exit_code === -1 && <span className="text-red-400 ml-2">(Blocked by allowlist)</span>}
-                        {log.exit_code > 0 && <span className="text-amber-400 ml-2">(Exit {log.exit_code})</span>}
-                      </div>
-                    ))}
-                    {/* Blinking cursor at the end */}
-                    <div className="animate-pulse w-2 h-3 bg-gray-500 mt-2"></div>
+              <div className="glass-panel p-4 rounded-xl border border-gray-800 bg-black/60 font-mono text-xs text-gray-400">
+                <h4 className="text-gray-500 mb-2 flex items-center gap-2">
+                  <Terminal size={14} /> Live Investigation Log
+                </h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                  {/* Always show initialization steps */}
+                  <div className="flex gap-2">
+                    <span className="text-gray-600">[{new Date().toLocaleTimeString()}]</span>
+                    <span className="text-gray-300">[System] Initializing autonomous SRE agent...</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="text-gray-600">[{new Date().toLocaleTimeString()}]</span>
+                    <span className="text-gray-300">[System] Connecting to target {run.target_host}...</span>
+                  </div>
+                  
+                  {liveLogs.map((log) => (
+                    <div key={log.id} className="flex gap-2">
+                      <span className="text-gray-600">[{new Date(log.executed_at).toLocaleTimeString()}]</span>
+                      <span className="text-[var(--color-brand-cyan)]">$ {log.command}</span>
+                      {log.args && <span className="text-gray-300">{Array.isArray(log.args) ? log.args.join(' ') : log.args}</span>}
+                      {log.exit_code === -1 && <span className="text-red-400 ml-2">(Blocked by allowlist)</span>}
+                      {log.exit_code > 0 && <span className="text-amber-400 ml-2">(Exit {log.exit_code})</span>}
+                    </div>
+                  ))}
+                  
+                  {/* Status Indicator */}
+                  <div className="flex gap-2 items-center mt-2">
+                    <span className="text-gray-600">[{new Date().toLocaleTimeString()}]</span>
+                    <span className="text-gray-400 animate-pulse italic">Agent is thinking and generating next action...</span>
+                    <div className="animate-pulse w-2 h-3 bg-gray-500"></div>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -146,6 +159,34 @@ export default function DiagnosisResult({ run, liveLogs = [] }: { run: Diagnosis
                   <div className="absolute text-2xl font-bold">
                     {confidenceScore}%
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Always show execution logs if we have them and it's not running (running state already shows them above) */}
+          {run.status !== "running" && liveLogs.length > 0 && (
+            <div className="mt-6 glass-panel p-4 rounded-xl border border-gray-800 bg-black/60 font-mono text-xs text-gray-400">
+              <h4 className="text-gray-500 mb-2 flex items-center gap-2">
+                <Terminal size={14} /> Execution Log
+              </h4>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                <div className="flex gap-2">
+                  <span className="text-gray-600">[{new Date(run.created_at).toLocaleTimeString()}]</span>
+                  <span className="text-gray-300">[System] Autonomous SRE agent initialized.</span>
+                </div>
+                {liveLogs.map((log) => (
+                  <div key={log.id} className="flex gap-2">
+                    <span className="text-gray-600">[{new Date(log.executed_at).toLocaleTimeString()}]</span>
+                    <span className="text-[var(--color-brand-cyan)]">$ {log.command}</span>
+                    {log.args && <span className="text-gray-300">{Array.isArray(log.args) ? log.args.join(' ') : log.args}</span>}
+                    {log.exit_code === -1 && <span className="text-red-400 ml-2">(Blocked by allowlist)</span>}
+                    {log.exit_code > 0 && <span className="text-amber-400 ml-2">(Exit {log.exit_code})</span>}
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <span className="text-gray-600">[{new Date(run.completed_at || '').toLocaleTimeString()}]</span>
+                  <span className="text-gray-300">[System] Investigation {run.status}.</span>
                 </div>
               </div>
             </div>

@@ -11,7 +11,7 @@ from backend.app.config import settings
 # ?ssl=require or similar depending on the exact connection string
 engine = create_async_engine(
     settings.database_url,
-    echo=(settings.log_level == "DEBUG"),
+    echo=False,
     future=True,
 )
 
