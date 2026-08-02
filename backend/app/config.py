@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     target_user: str = Field(default="ubuntu", description="SSH username")
     target_ssh_key: str = Field(default="~/.ssh/id_rsa", description="Path to SSH private key")
     target_password: str | None = Field(default=None, description="Optional SSH password fallback")
+    ssh_accept_unknown_host_keys: bool = Field(
+        default=False,
+        description="Allow accepting unknown SSH host keys. Keep false outside disposable local labs.",
+    )
 
     # Database Settings
     database_url: str = Field(
@@ -67,6 +71,22 @@ class Settings(BaseSettings):
     # App Settings
     app_env: Literal["development", "production", "testing"] = Field(default="development")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="DEBUG")
+    allowed_cors_origins: list[str] = Field(
+        default=["http://localhost:3000", "http://127.0.0.1:3000"],
+        description="Allowed browser origins for the API.",
+    )
+    auto_create_db: bool = Field(
+        default=False,
+        description="Create missing tables on startup. Prefer Alembic migrations for normal runtime.",
+    )
+    incident_mutation_enabled: bool = Field(
+        default=False,
+        description="Enable incident seed/reset endpoints. Disabled by default because they run privileged lab scripts.",
+    )
+    incident_control_token: str = Field(
+        default="",
+        description="Optional bearer token required for incident seed/reset when configured.",
+    )
 
 
 # Singleton instance

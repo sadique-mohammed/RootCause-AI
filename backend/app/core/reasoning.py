@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import backend.app.tools  # noqa: F401  # Registers production tools on import.
@@ -104,132 +105,140 @@ async def run_diagnosis(
     deadline = time.monotonic() + timeout_seconds
     tool_calls_executed = 0
 
-    for iteration in range(1, settings.max_tool_iterations + 1):
-        logger.info("Diagnosis loop iteration %d/%d", iteration, settings.max_tool_iterations)
+    try:
+        for iteration in range(1, settings.max_tool_iterations + 1):
+            logger.info("Diagnosis loop iteration %d/%d", iteration, settings.max_tool_iterations)
 
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-
-        try:
-            response = await asyncio.wait_for(
-                chat_completion(messages=messages, tools=tools), timeout=remaining
-            )
-        except TimeoutError:
-            break
-
-        # 1. Handle Hard LLM Errors
-        if response.error:
-            logger.error("Reasoning loop aborted due to LLM error: %s", response.content)
-            final_report = DiagnosisReport(
-                root_cause="LLM routing or API failure",
-                root_cause_category="unknown",
-                confidence=0.0,
-                evidence=[],
-                suggested_fix="Check LLM API status and API keys.",
-                inconclusive=True,
-                summary=f"Failed to diagnose due to backend AI error: {response.content}",
-            )
-            await _persist_to_db(run_db, final_report, ssh_runner, db_session)
-            return final_report
-
-        # Append assistant's response to history
-        assistant_msg: dict[str, Any] = {"role": "assistant"}
-        if response.content:
-            assistant_msg["content"] = response.content
-        if response.tool_calls:
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
-                }
-                for tc in response.tool_calls
-            ]
-        messages.append(assistant_msg)
-
-        # 2. Handle Tool Calls
-        if response.tool_calls:
-            if tool_calls_executed + len(response.tool_calls) > settings.max_tool_iterations:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 break
-            for tc in response.tool_calls:
-                logger.info("Executing tool %s with args %s", tc.name, tc.arguments)
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                try:
-                    tool_output = await asyncio.wait_for(
-                        execute_tool(tc.name, tc.arguments, ssh_runner=ssh_runner),
-                        timeout=remaining,
-                    )
-                except TimeoutError:
-                    break
-                tool_calls_executed += 1
 
-                # Format output
-                if tool_output.allowed:
-                    raw_text = (
-                        f"EXIT_CODE: {tool_output.exit_code}\n"
-                        f"STDOUT:\n{tool_output.stdout}\n"
-                        f"STDERR:\n{tool_output.stderr}"
-                    )
-                else:
-                    raw_text = f"BLOCKED BY SECURITY ALLOWLIST: {tool_output.stderr}"
-
-                truncated_text = _truncate_output(raw_text)
-                observations.append((tc.name, raw_text))
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "name": tc.name,
-                        "content": truncated_text,
-                    }
-                )
-
-            # Continue loop to let LLM analyze the tool results
-            continue
-
-        # 3. Handle Text Response (Final Diagnosis attempt)
-        if response.content:
-            raw_json = _extract_json_from_text(response.content)
             try:
-                report = DiagnosisReport.model_validate_json(raw_json)
-
-                # Check confidence/evidence rules
-                if not _evidence_is_grounded(report, observations) or report.confidence < 0.65:
-                    report.inconclusive = True
-
-                await _persist_to_db(run_db, report, ssh_runner, db_session)
-                return report
-
-            except ValidationError as e:
-                logger.warning("Failed to parse DiagnosisReport JSON: %s", e)
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "Your response was not valid JSON matching the "
-                            f"DiagnosisReport schema. Please fix it. Error: {e}"
-                        ),
-                    }
+                response = await asyncio.wait_for(
+                    chat_completion(messages=messages, tools=tools), timeout=remaining
                 )
+            except TimeoutError:
+                break
+
+            # 1. Handle Hard LLM Errors
+            if response.error:
+                logger.error("Reasoning loop aborted due to LLM error: %s", response.content)
+                final_report = DiagnosisReport(
+                    root_cause="LLM routing or API failure",
+                    root_cause_category="unknown",
+                    confidence=0.0,
+                    evidence=[],
+                    suggested_fix="Check LLM API status and API keys.",
+                    inconclusive=True,
+                    summary=f"Failed to diagnose due to backend AI error: {response.content}",
+                )
+                await _persist_to_db(run_db, final_report, ssh_runner, db_session)
+                return final_report
+
+            # Append assistant's response to history
+            assistant_msg: dict[str, Any] = {"role": "assistant"}
+            if response.content:
+                assistant_msg["content"] = response.content
+            if response.tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                    }
+                    for tc in response.tool_calls
+                ]
+            messages.append(assistant_msg)
+
+            # 2. Handle Tool Calls
+            if response.tool_calls:
+                if tool_calls_executed + len(response.tool_calls) > settings.max_tool_iterations:
+                    break
+                timed_out = False
+                for tc in response.tool_calls:
+                    logger.info("Executing tool %s with args %s", tc.name, tc.arguments)
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        timed_out = True
+                        break
+                    try:
+                        tool_output = await asyncio.wait_for(
+                            execute_tool(tc.name, tc.arguments, ssh_runner=ssh_runner),
+                            timeout=remaining,
+                        )
+                    except TimeoutError:
+                        timed_out = True
+                        break
+                    tool_calls_executed += 1
+
+                    # Format output
+                    if tool_output.allowed:
+                        raw_text = (
+                            f"EXIT_CODE: {tool_output.exit_code}\n"
+                            f"STDOUT:\n{tool_output.stdout}\n"
+                            f"STDERR:\n{tool_output.stderr}"
+                        )
+                    else:
+                        raw_text = f"BLOCKED BY SECURITY ALLOWLIST: {tool_output.stderr}"
+
+                    truncated_text = _truncate_output(raw_text)
+                    observations.append((tc.name, raw_text))
+
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "name": tc.name,
+                            "content": truncated_text,
+                        }
+                    )
+
+                if timed_out:
+                    break
+                # Continue loop to let LLM analyze the tool results
                 continue
 
-    # 4. Hit iteration limit
-    logger.warning("Max iterations (%d) reached.", settings.max_tool_iterations)
-    final_report = DiagnosisReport(
-        root_cause="Investigation timed out / max iterations reached.",
-        root_cause_category="unknown",
-        confidence=0.0,
-        evidence=[],
-        suggested_fix="Manual intervention required.",
-        inconclusive=True,
-        summary="The AI agent ran out of iterations before determining a conclusive root cause.",
-    )
-    await _persist_to_db(run_db, final_report, ssh_runner, db_session)
-    return final_report
+            # 3. Handle Text Response (Final Diagnosis attempt)
+            if response.content:
+                raw_json = _extract_json_from_text(response.content)
+                try:
+                    report = DiagnosisReport.model_validate_json(raw_json)
+
+                    # Check confidence/evidence rules
+                    if not _evidence_is_grounded(report, observations) or report.confidence < 0.65:
+                        report.inconclusive = True
+
+                    await _persist_to_db(run_db, report, ssh_runner, db_session)
+                    return report
+
+                except ValidationError as e:
+                    logger.warning("Failed to parse DiagnosisReport JSON: %s", e)
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Your response was not valid JSON matching the "
+                                f"DiagnosisReport schema. Please fix it. Error: {e}"
+                            ),
+                        }
+                    )
+                    continue
+
+        # 4. Hit iteration limit
+        logger.warning("Max iterations (%d) reached.", settings.max_tool_iterations)
+        final_report = DiagnosisReport(
+            root_cause="Investigation timed out / max iterations reached.",
+            root_cause_category="unknown",
+            confidence=0.0,
+            evidence=[],
+            suggested_fix="Manual intervention required.",
+            inconclusive=True,
+            summary="The AI agent ran out of iterations before determining a conclusive root cause.",
+        )
+        await _persist_to_db(run_db, final_report, ssh_runner, db_session)
+        return final_report
+    finally:
+        ssh_runner.disconnect()
 
 
 async def _persist_to_db(
@@ -256,11 +265,11 @@ async def _persist_to_db(
     run_db.commands_executed = len(ssh_runner.command_history)
     run_db.completed_at = datetime.now(UTC).replace(tzinfo=None)
 
-    # Calculate duration safely
+    # Calculate duration safely (both datetimes are naive UTC)
     if run_db.created_at:
         created_at = run_db.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
+        if created_at.tzinfo is not None:
+            created_at = created_at.replace(tzinfo=None)
         delta = run_db.completed_at - created_at
         run_db.duration_seconds = delta.total_seconds()
 
@@ -297,6 +306,6 @@ async def _persist_to_db(
 
     try:
         await db_session.commit()
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to commit diagnosis run to DB: %s", e)
         await db_session.rollback()

@@ -93,7 +93,9 @@ ALLOWED_COMMANDS: dict[str, AllowedCommandSpec] = {
             "/etc/resolv.conf",
             "/etc/hosts",
             "/etc/nsswitch.conf",
-            "/etc/nginx/nginx.conf",
+            "/etc/nginx",
+            "/var/log/nginx",
+            "/var/log/syslog",
         ],
     ),
     "ping": AllowedCommandSpec(allowed_flags=["-c", "-i", "-W", "-s", "-q"]),
@@ -105,7 +107,12 @@ ALLOWED_COMMANDS: dict[str, AllowedCommandSpec] = {
     "dig": AllowedCommandSpec(allowed_flags=["+time=", "+tries=", "+short", "A", "AAAA", "MX", "TXT", "NS", "ANY"]),
     "nslookup": AllowedCommandSpec(allowed_flags=[]),
     "openssl": AllowedCommandSpec(
-        allowed_flags=["s_client", "x509", "-connect", "-servername", "-enddate", "-noout", "-dates", "-issuer"]
+        allowed_flags=[
+            "s_client", "x509", "-connect", "-servername",
+            "-enddate", "-noout", "-dates", "-issuer",
+            "-in", "-text", "-fingerprint", "-subject",
+        ],
+        restricted_paths=["/etc/ssl", "/etc/nginx"],
     ),
     "dmesg": AllowedCommandSpec(allowed_flags=["--level=", "--level", "--time-format=iso", "-T", "-L", "-e", "-k"]),
     "uptime": AllowedCommandSpec(allowed_flags=[]),

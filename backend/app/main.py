@@ -8,16 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
 from backend.app.api.routes import diagnose, health, incidents
+from backend.app.config import settings
 from backend.app.db.database import engine
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan event handler for FastAPI startup and shutdown."""
-    # In a real production setup with Alembic migrations, we'd skip create_all here.
-    # But for ease of local dev without forcing migrations immediately, this creates tables if missing.
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+    if settings.auto_create_db:
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
 
     yield
 
@@ -34,7 +34,7 @@ app = FastAPI(
 # CORS middleware for the Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production
+    allow_origins=settings.allowed_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

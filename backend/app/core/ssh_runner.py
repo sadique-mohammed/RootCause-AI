@@ -20,7 +20,10 @@ class CommandResult(BaseModel):
     stderr: str = Field(default="", description="Captured standard error")
     exit_code: int = Field(default=0, description="Process exit code (-1 for connection/execution error)")
     duration_ms: int = Field(default=0, description="Execution duration in milliseconds")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None), description="Execution timestamp")
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None),
+        description="Execution timestamp",
+    )
     allowed: bool = Field(default=True, description="Whether the command passed allowlist validation")
 
 
@@ -49,7 +52,11 @@ class SSHRunner:
             return
 
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.load_system_host_keys()
+        if settings.ssh_accept_unknown_host_keys:
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        else:
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
         connect_kwargs: dict[str, Any] = {
             "hostname": self.host,
