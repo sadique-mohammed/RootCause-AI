@@ -2,6 +2,38 @@
 # Usage: docker compose up -d
 
 services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: rootcause-api
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://rootcause:rootcause@db:5432/rootcause_db
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      LITELLM_PROVIDER: ${LITELLM_PROVIDER:-ollama}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TARGET_HOST: ${TARGET_HOST:-192.168.64.2}
+      TARGET_USER: ${TARGET_USER:-ubuntu}
+      TARGET_SSH_KEY: ${TARGET_SSH_KEY:-/root/.ssh/id_rsa}
+      TARGET_PASSWORD: ${TARGET_PASSWORD:-}
+      SSH_ACCEPT_UNKNOWN_HOST_KEYS: ${SSH_ACCEPT_UNKNOWN_HOST_KEYS:-false}
+      INCIDENT_MUTATION_ENABLED: ${INCIDENT_MUTATION_ENABLED:-false}
+      INCIDENT_CONTROL_TOKEN: ${INCIDENT_CONTROL_TOKEN:-}
+      ALLOWED_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${HOME}/.ssh:/root/.ssh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "alembic upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"]
+
   # PostgreSQL database
   db:
     image: postgres:16-alpine
