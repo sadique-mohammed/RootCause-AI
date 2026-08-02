@@ -75,6 +75,16 @@ async def run_diagnosis(
     4. Guard against >15 iterations.
     5. Save everything to DB if provided.
     """
+    if run_id is not None and db_session is None:
+        from backend.app.db.database import async_session_maker
+
+        async with async_session_maker() as owned_session:
+            return await run_diagnosis(
+                incident_description=incident_description,
+                ssh_runner=ssh_runner,
+                run_id=run_id,
+                db_session=owned_session,
+            )
 
     # 0. Set status to running in DB
     run_db = None

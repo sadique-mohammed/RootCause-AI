@@ -1,5 +1,6 @@
 """Diagnosis API endpoints."""
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -38,7 +39,7 @@ async def start_diagnosis(
         password=password,
     )
 
-    if not runner.ping_connection():
+    if not await asyncio.to_thread(runner.ping_connection):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Pre-flight SSH ping failed for {username}@{host}. Check credentials or host reachability.",
@@ -60,7 +61,6 @@ async def start_diagnosis(
         incident_description=request.incident_description,
         ssh_runner=runner,
         run_id=run_db.id,
-        db_session=db_session,
     )
 
     return {"run_id": str(run_db.id), "status": "pending"}
@@ -145,4 +145,32 @@ async def get_command_log(
             executed_at=command.executed_at,
         )
         for command in result.scalars().all()
+    ]
+
+
+@router.get("/diagnose/{run_id}/evidence", response_model=list[EvidenceItemRead])
+async def get_evidence(
+    run_id: uuid.UUID,
+    db_session: AsyncSession = Depends(get_db_session),  # noqa: B008
+) -> list[EvidenceItemRead]:
+    """Return evidence collected for a diagnosis run."""
+    if not await db_session.get(DiagnosisRun, run_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis run not found")
+
+    stmt = select(EvidenceItemDB).where(EvidenceItemDB.run_id == run_id).order_by(EvidenceItemDB.step_number)  # type: ignore[arg-type]
+    result = await db_session.execute(stmt)
+    return [
+        EvidenceItemRead(
+            id=evidence.id,
+            run_id=evidence.run_id,
+            created_at=evidence.created_at,
+            step=evidence.step_number,
+            tool_name=evidence.tool_name,
+            tool_args=evidence.tool_args,
+            raw_output=evidence.raw_output,
+            key_finding=evidence.key_finding,
+            relevance=evidence.relevance,
+            supports_conclusion=evidence.supports_conclusion,
+        )
+        for evidence in result.scalars().all()
     ]

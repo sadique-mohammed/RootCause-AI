@@ -1,8 +1,9 @@
 """Central tool registry and output schemas for diagnostic tools."""
 
-from collections.abc import Awaitable, Callable
+import asyncio
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
@@ -40,6 +41,15 @@ def get_all_tool_schemas() -> list[dict[str, Any]]:
     """Return all tool schemas for LLM function calling registration."""
     return [tool.schema for tool in TOOL_REGISTRY.values()]
 
+def _run_tool_in_worker(
+    func: Callable[..., Awaitable[ToolOutput]],
+    ssh_runner: SSHRunner,
+    args: dict[str, Any],
+) -> ToolOutput:
+    """Run an async tool body in a worker thread so blocking SSH calls cannot stall the event loop."""
+    coroutine = cast(Coroutine[Any, Any, ToolOutput], func(ssh_runner=ssh_runner, **args))
+    return asyncio.run(coroutine)
+
 async def execute_tool(name: str, args: dict[str, Any], ssh_runner: SSHRunner) -> ToolOutput:
     """Look up and execute a registered tool by name using the provided arguments."""
     if name not in TOOL_REGISTRY:
@@ -53,7 +63,7 @@ async def execute_tool(name: str, args: dict[str, Any], ssh_runner: SSHRunner) -
 
     tool = TOOL_REGISTRY[name]
     try:
-        return await tool.func(ssh_runner=ssh_runner, **args)
+        return await asyncio.to_thread(_run_tool_in_worker, tool.func, ssh_runner, args)
     except Exception as err:
         # This is the outermost safety net for the AI reasoning loop.
         # Bad LLM-generated args (TypeError, KeyError, ValueError) must

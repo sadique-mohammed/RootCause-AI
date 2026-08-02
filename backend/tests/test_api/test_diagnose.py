@@ -1,12 +1,12 @@
 """Tests for API endpoints."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.db.models import DiagnosisRun
+from backend.app.db.models import DiagnosisRun, EvidenceItemDB
 
 
 @pytest.mark.asyncio
@@ -18,9 +18,11 @@ async def test_health_check(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+@patch("backend.app.api.routes.diagnose.run_diagnosis", new_callable=AsyncMock)
 @patch("backend.app.api.routes.diagnose.SSHRunner")
 async def test_diagnose_post_success(
     mock_ssh_runner_class: MagicMock,
+    mock_run_diagnosis: AsyncMock,
     async_client: AsyncClient,
 ) -> None:
     """Test starting a diagnosis successfully."""
@@ -39,6 +41,7 @@ async def test_diagnose_post_success(
     assert "run_id" in data
     assert data["status"] == "pending"
     assert mock_runner.ping_connection.called
+    assert mock_run_diagnosis.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -112,9 +115,24 @@ async def test_incidents_catalog(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_incidents_seed_disabled_by_default(async_client: AsyncClient) -> None:
+    """Incident mutation endpoints must fail closed unless explicitly enabled."""
+    response = await async_client.post(
+        "/api/v1/incidents/seed",
+        json={"incident_id": "04"},
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 @patch("backend.app.api.routes.incidents.paramiko.SSHClient")
-async def test_incidents_seed_success(mock_ssh_client: MagicMock, async_client: AsyncClient) -> None:
+async def test_incidents_seed_success(
+    mock_ssh_client: MagicMock,
+    async_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Test incident seeding without real SSH connection."""
+    monkeypatch.setattr("backend.app.api.routes.incidents.settings.incident_mutation_enabled", True)
     # Setup mock to return exit code 0
     mock_client_instance = MagicMock()
     mock_ssh_client.return_value = mock_client_instance
@@ -132,8 +150,12 @@ async def test_incidents_seed_success(mock_ssh_client: MagicMock, async_client: 
 
 
 @pytest.mark.asyncio
-async def test_incidents_seed_not_found(async_client: AsyncClient) -> None:
+async def test_incidents_seed_not_found(
+    async_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Test incident seeding with invalid ID."""
+    monkeypatch.setattr("backend.app.api.routes.incidents.settings.incident_mutation_enabled", True)
     response = await async_client.post(
         "/api/v1/incidents/seed",
         json={"incident_id": "invalid_id"},
@@ -148,3 +170,36 @@ async def test_command_log_not_found(async_client: AsyncClient) -> None:
 
     response = await async_client.get(f"/api/v1/diagnose/{uuid.uuid4()}/commands")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_evidence(async_client: AsyncClient, db_session: AsyncSession) -> None:
+    """Test retrieving evidence for a diagnosis run."""
+    run = DiagnosisRun(
+        target_host="10.0.0.1",
+        incident_description="Test incident",
+        status="completed",
+    )
+    db_session.add(run)
+    await db_session.commit()
+    await db_session.refresh(run)
+
+    evidence = EvidenceItemDB(
+        run_id=run.id,
+        step_number=1,
+        tool_name="check_dns",
+        tool_args={"domain": "example.com"},
+        raw_output="timeout",
+        key_finding="DNS timed out",
+        relevance="DNS failure explains the incident",
+        supports_conclusion=True,
+    )
+    db_session.add(evidence)
+    await db_session.commit()
+
+    response = await async_client.get(f"/api/v1/diagnose/{run.id}/evidence")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["tool_name"] == "check_dns"
