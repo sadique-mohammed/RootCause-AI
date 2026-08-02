@@ -79,6 +79,8 @@ def _resolve_model_name() -> str:
     """
     if settings.litellm_provider == "ollama":
         return f"ollama/{settings.ollama_model}"
+    elif settings.litellm_provider == "gemini":
+        return settings.gemini_model
     return settings.openai_model
 
 
@@ -164,9 +166,11 @@ async def chat_completion(
     if settings.litellm_provider == "ollama":
         kwargs["api_base"] = settings.ollama_base_url
 
-    # Set OpenAI API key
+    # Set API keys based on provider
     if settings.litellm_provider == "openai" and settings.openai_api_key:
         kwargs["api_key"] = settings.openai_api_key
+    elif settings.litellm_provider == "gemini" and settings.gemini_api_key:
+        kwargs["api_key"] = settings.gemini_api_key
 
     # Attempt with one retry on transient failure
     last_error: str = ""

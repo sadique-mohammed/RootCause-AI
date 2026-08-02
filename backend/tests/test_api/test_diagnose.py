@@ -115,8 +115,12 @@ async def test_incidents_catalog(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_incidents_seed_disabled_by_default(async_client: AsyncClient) -> None:
+async def test_incidents_seed_disabled_by_default(
+    async_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Incident mutation endpoints must fail closed unless explicitly enabled."""
+    monkeypatch.setattr("backend.app.api.routes.incidents.settings.incident_mutation_enabled", False)
     response = await async_client.post(
         "/api/v1/incidents/seed",
         json={"incident_id": "04"},

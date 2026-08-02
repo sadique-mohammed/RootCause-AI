@@ -11,7 +11,7 @@ def test_default_settings() -> None:
     assert cfg.target_user == "ubuntu"
     assert cfg.max_tool_iterations == 15
     assert cfg.max_output_length == 2000
-    assert cfg.litellm_provider in ("openai", "ollama")
+    assert cfg.litellm_provider in ("openai", "ollama", "gemini")
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:

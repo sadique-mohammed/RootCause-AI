@@ -39,9 +39,11 @@ class Settings(BaseSettings):
         description="Ollama API base URL",
     )
     ollama_model: str = Field(default="llama3.1:8b", description="Ollama local model name")
-    litellm_provider: Literal["openai", "ollama"] = Field(
+    litellm_provider: Literal["openai", "ollama", "gemini"] = Field(
         default="ollama", description="Active LLM provider route"
     )
+    gemini_api_key: str = Field(default="", description="Google Gemini API key")
+    gemini_model: str = Field(default="gemini/gemini-3.6-flash", description="Gemini model identifier")
     litellm_timeout: int = Field(
         default=30,
         description="Per-call timeout in seconds for LiteLLM requests",
@@ -88,6 +90,16 @@ class Settings(BaseSettings):
     incident_control_token: str = Field(
         default="",
         description="Optional bearer token required for incident seed/reset when configured.",
+    )
+    allow_route_break: bool = Field(
+        default=False,
+        description="Must be true to allow Incident 05 to break the default route.",
+        alias="ROOTCAUSE_ALLOW_ROUTE_BREAK",
+    )
+    allow_packet_loss: bool = Field(
+        default=False,
+        description="Must be true to allow Incident 10 to inject packet loss.",
+        alias="ROOTCAUSE_ALLOW_PACKET_LOSS",
     )
 
 

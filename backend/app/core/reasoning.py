@@ -94,10 +94,11 @@ async def run_diagnosis(
         if run_db:
             run_db.status = "running"
             await db_session.commit()
+    schema_json = json.dumps(DiagnosisReport.model_json_schema(), indent=2)
     system_prompt = (
         settings.system_prompt
         + "\n\nWhen you are ready to produce your final diagnosis, or if you run out of ideas, "
-        "you MUST return a single, valid JSON object matching the DiagnosisReport schema as your text response. "
+        f"you MUST return a single, valid JSON object matching this exact schema:\n\n{schema_json}\n\n"
         "Do NOT return anything else. Do NOT ask clarifying questions."
     )
 

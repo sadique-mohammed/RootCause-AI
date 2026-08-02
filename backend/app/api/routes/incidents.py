@@ -147,6 +147,17 @@ def _execute_script_via_ssh(
         client.connect(**connect_kwargs)
 
         script_content = script_path.read_text()
+
+        # Inject lab safety environment variables
+        env_exports = []
+        if settings.allow_route_break:
+            env_exports.append("export ROOTCAUSE_ALLOW_ROUTE_BREAK=true")
+        if settings.allow_packet_loss:
+            env_exports.append("export ROOTCAUSE_ALLOW_PACKET_LOSS=true")
+
+        if env_exports:
+            script_content = "\n".join(env_exports) + "\n" + script_content
+
         stdin, stdout, stderr = client.exec_command("sudo bash")
         stdin.write(script_content)
         stdin.close()
