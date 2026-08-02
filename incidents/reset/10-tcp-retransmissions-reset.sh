@@ -8,11 +8,16 @@
 set -euo pipefail
 
 # Read saved interface name
-if [ -f /tmp/.tc_interface ]; then
-    TARGET_IF=$(cat /tmp/.tc_interface)
+TC_MARKER=/tmp/.rootcause_tc_interface
+if [ ! -f "$TC_MARKER" ] && [ -f /tmp/.tc_interface ]; then
+    TC_MARKER=/tmp/.tc_interface
+fi
+
+if [ -f "$TC_MARKER" ]; then
+    TARGET_IF=$(cat "$TC_MARKER")
 else
     # Fallback: detect from default route
-    TARGET_IF=$(ip route | grep default | awk '{print $5}' | head -n 1)
+    TARGET_IF=$(ip route | awk '/^default/ {print $5; exit}')
 fi
 
 if [ -z "$TARGET_IF" ]; then
@@ -29,4 +34,4 @@ else
 fi
 
 # Clean up marker file
-rm -f /tmp/.tc_interface
+rm -f "$TC_MARKER" /tmp/.tc_interface

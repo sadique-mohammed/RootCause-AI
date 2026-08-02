@@ -8,8 +8,13 @@
 
 set -euo pipefail
 
+if [ "${ROOTCAUSE_ALLOW_PACKET_LOSS:-false}" != "true" ]; then
+    echo "ERROR: Incident 10 can disrupt SSH/API traffic. Set ROOTCAUSE_ALLOW_PACKET_LOSS=true to run it in an out-of-band lab."
+    exit 1
+fi
+
 # Detect primary network interface (default route)
-TARGET_IF=$(ip route | grep default | awk '{print $5}' | head -n 1)
+TARGET_IF=$(ip route | awk '/^default/ {print $5; exit}')
 
 if [ -z "$TARGET_IF" ]; then
     echo "ERROR: Could not detect default network interface."
@@ -26,7 +31,7 @@ fi
 tc qdisc add dev "$TARGET_IF" root netem loss 30%
 
 # Save interface name for the reset script
-echo "$TARGET_IF" > /tmp/.tc_interface
+echo "$TARGET_IF" > /tmp/.rootcause_tc_interface
 
 echo "================================================"
 echo "Incident 10 SEEDED"
