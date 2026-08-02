@@ -128,11 +128,31 @@ ALLOWED_COMMANDS: dict[str, AllowedCommandSpec] = {
 }
 
 _SAFE_VALUE = re.compile(r"^[A-Za-z0-9_./:@%+=,-]+$")
-_SAFE_POSITIONAL_VALUES = {
+_SAFE_FIRST_POSITIONAL_VALUES = {
     "systemctl": {"status", "list-units", "is-active", "is-failed"},
     "ip": {"route", "link", "addr", "show"},
 }
-_BLOCKED_POSITIONAL_OPERATIONS = {"set", "add", "del", "delete", "restart", "start", "stop", "enable", "disable"}
+_BLOCKED_POSITIONAL_OPERATIONS = {
+    "add",
+    "change",
+    "del",
+    "delete",
+    "down",
+    "enable",
+    "flush",
+    "replace",
+    "restart",
+    "set",
+    "start",
+    "stop",
+    "up",
+}
+_ALLOWED_IP_SHAPES = {
+    ("addr", "show"),
+    ("link", "show"),
+    ("route", "show"),
+    ("show",),
+}
 
 
 def _path_matches_prefix(path: str, prefix: str) -> bool:
@@ -164,12 +184,20 @@ def _validate_arguments(command: str, args: list[str], spec: AllowedCommandSpec)
             prefix_match = any(flag.endswith("=") and arg.startswith(flag) for flag in spec.allowed_flags)
             if not (exact_match or prefix_match):
                 return False, f"Flag '{arg}' is not permitted for '{command}'"
-        elif (
-            command in _SAFE_POSITIONAL_VALUES
-            and index == 0
-            and arg not in _SAFE_POSITIONAL_VALUES[command]
-        ) or (command in {"systemctl", "ip"} and arg in _BLOCKED_POSITIONAL_OPERATIONS):
+        if command in {"systemctl", "ip"} and not is_flag and arg in _BLOCKED_POSITIONAL_OPERATIONS:
             return False, f"Operation '{arg}' is not permitted for '{command}'"
+
+        if (
+            command in _SAFE_FIRST_POSITIONAL_VALUES
+            and index == 0
+            and arg not in _SAFE_FIRST_POSITIONAL_VALUES[command]
+        ):
+            return False, f"Operation '{arg}' is not permitted for '{command}'"
+
+    if command == "ip":
+        positional = tuple(arg for arg in args if not arg.startswith("-") and not arg.startswith("+"))
+        if positional not in _ALLOWED_IP_SHAPES:
+            return False, f"Argument shape '{' '.join(positional)}' is not permitted for 'ip'"
 
     if path_restricted and command in {"cat", "du", "ls", "tail", "head"}:
         positional_paths = [arg for arg in args if not arg.startswith("-") and not arg.startswith("+")]

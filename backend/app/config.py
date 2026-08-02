@@ -81,7 +81,9 @@ class Settings(BaseSettings):
     )
     incident_mutation_enabled: bool = Field(
         default=False,
-        description="Enable incident seed/reset endpoints. Disabled by default because they run privileged lab scripts.",
+        description=(
+            "Enable incident seed/reset endpoints. Disabled by default because they run privileged lab scripts."
+        ),
     )
     incident_control_token: str = Field(
         default="",

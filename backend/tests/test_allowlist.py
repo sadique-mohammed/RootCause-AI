@@ -79,8 +79,27 @@ def test_modifying_systemctl_operation_is_rejected() -> None:
 
 def test_modifying_ip_operation_is_rejected() -> None:
     """Read-only network inspection must not permit link changes."""
-    allowed, _ = validate_command("ip", ["link", "set", "eth0", "down"])
-    assert allowed is False
+    blocked_cases = [
+        ["link", "set", "eth0", "down"],
+        ["addr", "flush", "dev", "eth0"],
+        ["route", "flush", "table", "main"],
+        ["route", "replace", "default", "via", "10.0.0.1"],
+        ["route", "add", "default", "via", "10.0.0.1"],
+        ["route", "del", "default"],
+    ]
+
+    for args in blocked_cases:
+        allowed, _ = validate_command("ip", args)
+        assert allowed is False
+
+
+def test_read_only_ip_shapes_are_allowed() -> None:
+    """Read-only ip inspection commands stay available for diagnostics."""
+    allowed, reason = validate_command("ip", ["addr", "show"])
+    assert allowed is True, reason
+
+    allowed, reason = validate_command("ip", ["route", "show"])
+    assert allowed is True, reason
 
 
 def test_relative_path_traversal_is_rejected() -> None:
