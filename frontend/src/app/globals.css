@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #000000;
+  --color-foreground: #ffffff;
+  
+  --color-brand-cyan: #00f0ff;
+  --color-brand-blue: #0047ff;
+  --color-brand-purple: #8a2be2;
+  
+  --color-panel: rgba(20, 20, 25, 0.7);
+  --color-panel-border: rgba(255, 255, 255, 0.1);
+  
+  --color-status-success: #10b981;
+  --color-status-warning: #f59e0b;
+  --color-status-error: #ef4444;
+  --color-status-running: #3b82f6;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Glassmorphism Utilities */
+@utility glass-panel {
+  background-color: var(--color-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-panel-border);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+@utility glass-input {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+  transition: all 0.2s ease-in-out;
+}
+
+@utility glass-input-focus {
+  outline: none;
+  border-color: var(--color-brand-cyan);
+  box-shadow: 0 0 0 1px var(--color-brand-cyan), 0 0 15px rgba(0, 240, 255, 0.2);
+}
+
+/* Base Styles */
+body {
+  @apply bg-background text-foreground;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
