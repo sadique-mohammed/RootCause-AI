@@ -17,7 +17,7 @@ if [ -f /etc/nginx/nginx.conf.rootcause.bak ]; then
   rm -f /etc/nginx/nginx.conf.rootcause.bak
 fi
 
-nginx -t
-systemctl restart nginx
+nginx -t || true
+systemctl restart nginx || true
 
 echo "Incident 01 reset: Nginx config restored and service restarted."

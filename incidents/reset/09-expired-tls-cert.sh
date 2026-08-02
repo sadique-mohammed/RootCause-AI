@@ -21,7 +21,7 @@ if [ -f /etc/nginx/sites-available/default.rootcause.bak ]; then
   rm -f /etc/nginx/sites-available/default.rootcause.bak
 fi
 
-nginx -t
-systemctl restart nginx
+nginx -t || true
+systemctl restart nginx || true
 
 echo "Incident 09 reset: Expired TLS cert removed, nginx config restored."

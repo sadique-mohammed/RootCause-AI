@@ -88,7 +88,7 @@ export default function IncidentInput({ onStart }: IncidentInputProps) {
                     onChange={(e) => {
                       setSeedId(e.target.value);
                       const selected = catalog.find(i => i.id === e.target.value);
-                      if (selected) setDescription(selected.description);
+                      if (selected) setDescription(selected.symptom);
                     }}
                   >
                     <option value="" className="bg-gray-900 text-gray-400">Select...</option>

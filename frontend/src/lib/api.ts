@@ -41,6 +41,7 @@ export interface IncidentCatalogItem {
   id: string;
   name: string;
   description: string;
+  symptom: string;
   category: string;
   difficulty: string;
   seed_script_path: string;

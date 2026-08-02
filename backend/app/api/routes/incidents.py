@@ -21,6 +21,10 @@ class IncidentCatalogRead(BaseModel):
     id: str
     name: str
     description: str
+    symptom: str = Field(
+        description="Vague, symptom-level incident report — what an on-call SRE would actually say. "
+        "This is sent to the AI agent. Must NOT reveal the root cause.",
+    )
     category: str
     difficulty: str
     seed_script_path: str
@@ -42,6 +46,7 @@ CATALOG = [
         id="01",
         name="Nginx Won't Start",
         description="Nginx fails to start due to a syntax error in nginx.conf.",
+        symptom="Users are reporting the website is completely down. Nginx service won't start after a recent config change.",
         category="service",
         difficulty="easy",
         seed_script_path="incidents/seed/01-nginx-wont-start.sh",
@@ -50,6 +55,7 @@ CATALOG = [
         id="02",
         name="Disk Full",
         description="Root partition filled to capacity by a hidden file.",
+        symptom="Multiple services are failing with write errors. Applications can't create temp files or write logs.",
         category="disk",
         difficulty="easy",
         seed_script_path="incidents/seed/02-disk-full.sh",
@@ -58,6 +64,7 @@ CATALOG = [
         id="03",
         name="Memory Leak / OOM",
         description="A runaway process continuously allocates memory until OOM.",
+        symptom="Server is extremely slow and unresponsive. SSH sessions hang and services are being killed randomly.",
         category="memory",
         difficulty="medium",
         seed_script_path="incidents/seed/03-memory-leak-oom.sh",
@@ -66,6 +73,7 @@ CATALOG = [
         id="04",
         name="DNS Failure",
         description="Drops outbound DNS traffic using iptables.",
+        symptom="Applications can't reach external APIs. Curl to any domain times out, but pinging IP addresses works fine.",
         category="network",
         difficulty="medium",
         seed_script_path="incidents/seed/04-dns-failure.sh",
@@ -74,6 +82,7 @@ CATALOG = [
         id="05",
         name="Wrong Default Route",
         description="Default gateway replaced with a bogus unreachable address.",
+        symptom="Server has lost all outbound internet connectivity. Can't reach anything outside the local network.",
         category="network",
         difficulty="medium",
         seed_script_path="incidents/seed/05-wrong-default-route.sh",
@@ -82,6 +91,7 @@ CATALOG = [
         id="06",
         name="Interface Down",
         description="A secondary network interface is administratively brought down.",
+        symptom="Some network connections are failing. Certain services that bind to a specific IP are unreachable.",
         category="network",
         difficulty="easy",
         seed_script_path="incidents/seed/06-interface-down.sh",
@@ -90,6 +100,7 @@ CATALOG = [
         id="07",
         name="High CPU Runaway",
         description="An infinite loop process consumes 100% of one CPU core.",
+        symptom="Server load is abnormally high. Everything feels sluggish and response times have spiked.",
         category="process",
         difficulty="easy",
         seed_script_path="incidents/seed/07-high-cpu-runaway.sh",
@@ -98,6 +109,7 @@ CATALOG = [
         id="08",
         name="Port Conflict",
         description="A rogue process occupies port 80, preventing nginx from binding.",
+        symptom="Nginx won't start. Systemd shows it failed immediately after launch. Website is down.",
         category="service",
         difficulty="medium",
         seed_script_path="incidents/seed/08-port-conflict.sh",
@@ -106,6 +118,7 @@ CATALOG = [
         id="09",
         name="Expired TLS Certificate",
         description="Nginx configured with an already-expired self-signed TLS certificate.",
+        symptom="Users are getting SSL certificate warnings in their browser. HTTPS connections are being rejected.",
         category="security",
         difficulty="medium",
         seed_script_path="incidents/seed/09-expired-tls-cert.sh",
@@ -114,6 +127,7 @@ CATALOG = [
         id="10",
         name="TCP Retransmissions",
         description="High packet loss causing TCP retransmissions.",
+        symptom="Network connections are extremely slow and keep dropping. Downloads stall and SSH sessions lag badly.",
         category="network",
         difficulty="hard",
         seed_script_path="incidents/seed/10-tcp-retransmissions.sh",

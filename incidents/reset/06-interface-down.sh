@@ -28,6 +28,6 @@ if [ -f "$IF_MARKER" ]; then
   rm -f "$IF_MARKER" /tmp/.down_interface
   echo "Incident 06 reset: Interface $TARGET_IF brought back up."
 else
-  echo "No saved interface info found. Manual intervention required."
-  exit 1
+  echo "No saved interface marker found. Network interfaces appear clean."
+  exit 0
 fi

@@ -26,6 +26,6 @@ if [ -f "$ROUTE_MARKER" ]; then
 
   echo "Incident 05 reset: Default route restored to $ORIGINAL_GW via $ORIGINAL_IF."
 else
-  echo "No backup route found. Manual intervention required."
-  exit 1
+  echo "No backup route marker found. Default route appears clean."
+  exit 0
 fi

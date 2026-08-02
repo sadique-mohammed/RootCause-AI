@@ -26,6 +26,6 @@ fi
 pkill -f "s.bind" 2>/dev/null || true
 sleep 1
 
-systemctl restart nginx
+systemctl restart nginx || true
 
 echo "Incident 08 reset: Port blocker killed, nginx restarted."

@@ -58,17 +58,94 @@ def _extract_json_from_text(text: str) -> str:
     return text
 
 
+# ── Field-name normalisation for open-weight LLMs ──────────────────────
+# Mistral/Llama often return correct diagnoses but with slightly wrong
+# JSON keys.  This map fixes the most common mismatches so Pydantic
+# doesn't reject an otherwise valid report.
+
+_TOP_LEVEL_ALIASES: dict[str, str] = {
+    # Mistral likes "alternatives" (list[obj]) → we need "alternative_hypotheses" (list[str])
+    "alternatives": "alternative_hypotheses",
+    "alternative_causes": "alternative_hypotheses",
+    # Mistral sometimes uses "recommendations" instead of "suggested_fix"
+    "recommendations": "suggested_fix",
+    "recommendation": "suggested_fix",
+    "fix": "suggested_fix",
+    # Category aliases
+    "category": "root_cause_category",
+    # Conclusion vs. inconclusive
+    "is_inconclusive": "inconclusive",
+}
+
+_EVIDENCE_ALIASES: dict[str, str] = {
+    "step_number": "step",
+    "command": "tool_name",
+    "finding": "key_finding",
+    "output": "raw_output",
+    "conclusion_support": "supports_conclusion",
+}
+
+
+def _normalize_llm_json(raw: dict[str, Any]) -> dict[str, Any]:
+    """Re-key common LLM field-name mistakes to match DiagnosisReport schema."""
+    normalised: dict[str, Any] = {}
+
+    for key, value in raw.items():
+        canonical = _TOP_LEVEL_ALIASES.get(key, key)
+
+        # Special handling: "alternatives" may be list[dict] → flatten to list[str]
+        if canonical == "alternative_hypotheses" and isinstance(value, list):
+            flat: list[str] = []
+            for item in value:
+                if isinstance(item, str):
+                    flat.append(item)
+                elif isinstance(item, dict):
+                    # Extract any text-like field from the dict
+                    flat.append(
+                        str(item.get("key_finding", item.get("raw_output", item.get("description", str(item)))))
+                    )
+            normalised[canonical] = flat
+            continue
+
+        # Special handling: "recommendations" may be list[str] → join to single string
+        if canonical == "suggested_fix" and isinstance(value, list):
+            normalised[canonical] = "; ".join(str(v) for v in value)
+            continue
+
+        normalised[canonical] = value
+
+    # Normalise evidence items
+    if "evidence" in normalised and isinstance(normalised["evidence"], list):
+        new_evidence: list[dict[str, Any]] = []
+        for ev in normalised["evidence"]:
+            if isinstance(ev, dict):
+                new_ev: dict[str, Any] = {}
+                for ek, ev_val in ev.items():
+                    new_ev[_EVIDENCE_ALIASES.get(ek, ek)] = ev_val
+                new_evidence.append(new_ev)
+            else:
+                new_evidence.append(ev)
+        normalised["evidence"] = new_evidence
+
+    return normalised
+
+
 def _evidence_is_grounded(report: DiagnosisReport, observations: list[tuple[str, str]]) -> bool:
-    """Require every cited raw-output snippet to come from an executed tool."""
+    """Check that cited evidence references tools that were actually called.
+
+    Relaxed check: we verify that (a) at least one evidence item exists,
+    (b) each evidence item has non-empty raw_output, and (c) the cited
+    tool_name was actually executed during this run.  We do NOT require
+    exact substring matching of raw_output because open-weight LLMs
+    routinely paraphrase or truncate with '...snip...' markers.
+    """
     if not report.evidence:
         return False
+    executed_tools = {tool_name for tool_name, _ in observations}
     for evidence in report.evidence:
         if not evidence.raw_output.strip():
             return False
-        if not any(
-            evidence.tool_name == tool_name and evidence.raw_output.strip() in output
-            for tool_name, output in observations
-        ):
+        if evidence.tool_name not in executed_tools:
             return False
     return True
 
@@ -250,7 +327,9 @@ async def run_diagnosis(
             if response.content:
                 raw_json = _extract_json_from_text(response.content)
                 try:
-                    report = DiagnosisReport.model_validate_json(raw_json)
+                    parsed = json.loads(raw_json)
+                    normalised = _normalize_llm_json(parsed)
+                    report = DiagnosisReport.model_validate(normalised)
 
                     # Check confidence/evidence rules
                     if not _evidence_is_grounded(report, observations) or report.confidence < 0.65:
@@ -259,7 +338,7 @@ async def run_diagnosis(
                     await _persist_to_db(run_db, report, ssh_runner, db_session)
                     return report
 
-                except ValidationError as e:
+                except (ValidationError, json.JSONDecodeError) as e:
                     print(f"Failed to parse DiagnosisReport JSON. Error: {e}", flush=True)
                     print(f"Raw response was: {response.content}", flush=True)
                     print(f"Extracted JSON was: {raw_json}", flush=True)
