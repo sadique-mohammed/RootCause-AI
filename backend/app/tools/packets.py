@@ -22,7 +22,8 @@ CAPTURE_PACKETS_SCHEMA = {
         "Capture and analyze network packets for a short duration. "
         "Detects TCP retransmissions, duplicate ACKs, and connection "
         "resets. Use when packet loss or network-level issues are "
-        "suspected."
+        "suspected. NOTE: This tool runs LOCALLY on the backend server, "
+        "NOT on the target VM."
     ),
     "parameters": {
         "type": "object",

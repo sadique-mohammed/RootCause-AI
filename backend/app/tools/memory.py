@@ -44,7 +44,10 @@ async def check_memory(ssh_runner: SSHRunner) -> ToolOutput:
         combined_stderr += f"cat stderr: {meminfo_res.stderr}\n"
 
     duration_ms = free_res.duration_ms + meminfo_res.duration_ms
-    exit_code = max(free_res.exit_code, meminfo_res.exit_code)
+    exit_code = (
+        -1 if -1 in (free_res.exit_code, meminfo_res.exit_code)
+        else max(free_res.exit_code, meminfo_res.exit_code)
+    )
     allowed = free_res.allowed and meminfo_res.allowed
 
     return ToolOutput(

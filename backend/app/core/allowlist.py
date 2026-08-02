@@ -131,6 +131,7 @@ _SAFE_VALUE = re.compile(r"^[A-Za-z0-9_./:@%+=,-]+$")
 _SAFE_FIRST_POSITIONAL_VALUES = {
     "systemctl": {"status", "list-units", "is-active", "is-failed"},
     "ip": {"route", "link", "addr", "show"},
+    "openssl": {"s_client", "x509"},
 }
 _BLOCKED_POSITIONAL_OPERATIONS = {
     "add",
@@ -199,10 +200,10 @@ def _validate_arguments(command: str, args: list[str], spec: AllowedCommandSpec)
         if positional not in _ALLOWED_IP_SHAPES:
             return False, f"Argument shape '{' '.join(positional)}' is not permitted for 'ip'"
 
-    if path_restricted and command in {"cat", "du", "ls", "tail", "head"}:
+    if path_restricted and command in {"cat", "du", "ls", "tail", "head", "openssl"}:
         positional_paths = [arg for arg in args if not arg.startswith("-") and not arg.startswith("+")]
-        if command == "cat" and any(not arg.startswith("/") for arg in positional_paths):
-            return False, "cat requires absolute, explicitly permitted paths"
+        if command in {"cat", "du", "ls", "openssl"} and any(not arg.startswith("/") for arg in positional_paths):
+            return False, f"{command} requires absolute, explicitly permitted paths"
         if command in {"tail", "head"} and not any(arg.startswith("/") for arg in args):
             return False, f"{command} requires an absolute, explicitly permitted path"
 

@@ -1,6 +1,7 @@
 """Core reasoning engine loop."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -145,6 +146,10 @@ async def run_diagnosis(
                 await _persist_to_db(run_db, final_report, ssh_runner, db_session)
                 return final_report
 
+            # 2. Check Tool Call Budget (BEFORE appending to avoid malformed history)
+            if response.tool_calls and tool_calls_executed + len(response.tool_calls) > settings.max_tool_iterations:
+                break
+
             # Append assistant's response to history
             assistant_msg: dict[str, Any] = {"role": "assistant"}
             if response.content:
@@ -160,10 +165,8 @@ async def run_diagnosis(
                 ]
             messages.append(assistant_msg)
 
-            # 2. Handle Tool Calls
+            # 3. Execute Tool Calls
             if response.tool_calls:
-                if tool_calls_executed + len(response.tool_calls) > settings.max_tool_iterations:
-                    break
                 timed_out = False
                 for tc in response.tool_calls:
                     logger.info("Executing tool %s with args %s", tc.name, tc.arguments)
@@ -247,6 +250,14 @@ async def run_diagnosis(
         )
         await _persist_to_db(run_db, final_report, ssh_runner, db_session)
         return final_report
+    except Exception as exc:
+        logger.exception("Unhandled error in diagnosis loop")
+        if run_db and db_session:
+            run_db.status = "failed"
+            run_db.summary = f"Internal error: {exc}"
+            with contextlib.suppress(SQLAlchemyError):
+                await db_session.commit()
+        raise
     finally:
         ssh_runner.disconnect()
 

@@ -1,9 +1,9 @@
 #!/bin/bash
-# 10-tcp-retransmissions-reset.sh
+# 10-tcp-retransmissions.sh
 # Reset: Remove tc netem packet loss rule
 #
 # REQUIRES: sudo / root access on the target VM
-# USAGE:    sudo bash incidents/reset/10-tcp-retransmissions-reset.sh
+# USAGE:    sudo bash incidents/reset/10-tcp-retransmissions.sh
 
 set -euo pipefail
 

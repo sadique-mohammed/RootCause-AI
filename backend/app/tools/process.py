@@ -21,6 +21,8 @@ CHECK_PROCESSES_SCHEMA = {
                 "type": "integer",
                 "description": "Number of top processes to return (default: 10)",
                 "default": 10,
+                "minimum": 1,
+                "maximum": 100,
             },
         },
         "required": ["sort_by"],

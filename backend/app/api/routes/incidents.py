@@ -151,10 +151,10 @@ def _execute_script_via_ssh(
         stdin.write(script_content)
         stdin.close()
 
-        exit_status = stdout.channel.recv_exit_status()
-        # Must read streams to avoid blocking / channel deadlock
+        # Must read streams BEFORE exit status to avoid blocking / channel deadlock
         stdout.read()
         err = stderr.read().decode()
+        exit_status = stdout.channel.recv_exit_status()
 
         if exit_status != 0:
             raise HTTPException(

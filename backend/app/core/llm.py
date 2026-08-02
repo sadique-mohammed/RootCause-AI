@@ -174,6 +174,11 @@ async def chat_completion(
         try:
             response = await litellm.acompletion(**kwargs)
 
+            if not response.choices:
+                last_error = "LLM returned no choices (possible content filter)"
+                logger.warning(last_error)
+                continue
+
             # Extract the first choice
             choice = response.choices[0]
             message = choice.message
@@ -213,6 +218,10 @@ async def chat_completion(
             logger.warning(last_error)
             # Non-transient API errors — don't retry
             break
+
+        except (IndexError, AttributeError, KeyError) as err:
+            last_error = f"LLM provider returned malformed structure: {err} (attempt {attempt + 1}/2)"
+            logger.warning(last_error)
 
     # Both attempts failed — return structured error
     logger.error("LLM call failed after retries: %s", last_error)

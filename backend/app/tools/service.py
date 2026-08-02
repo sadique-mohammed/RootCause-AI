@@ -50,7 +50,10 @@ async def check_service_status(ssh_runner: SSHRunner, service_name: str, log_lin
         combined_stderr += f"journalctl stderr: {journal_res.stderr}\n"
 
     duration_ms = status_res.duration_ms + journal_res.duration_ms
-    exit_code = max(status_res.exit_code, journal_res.exit_code)
+    exit_code = (
+        -1 if -1 in (status_res.exit_code, journal_res.exit_code)
+        else max(status_res.exit_code, journal_res.exit_code)
+    )
     allowed = status_res.allowed and journal_res.allowed
 
     return ToolOutput(

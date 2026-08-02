@@ -43,7 +43,7 @@ async def check_disk_usage(ssh_runner: SSHRunner, path: str | None = None) -> To
             combined_stderr += f"\ndu stderr: {du_res.stderr}"
 
         duration_ms += du_res.duration_ms
-        exit_code = max(exit_code, du_res.exit_code)
+        exit_code = -1 if -1 in (exit_code, du_res.exit_code) else max(exit_code, du_res.exit_code)
         allowed = allowed and du_res.allowed
 
     return ToolOutput(

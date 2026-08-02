@@ -52,7 +52,7 @@ async def check_dns(
         combined_stderr += f"cat stderr: {resolv_res.stderr}\n"
 
     duration_ms = dig_res.duration_ms + resolv_res.duration_ms
-    exit_code = max(dig_res.exit_code, resolv_res.exit_code)
+    exit_code = -1 if -1 in (dig_res.exit_code, resolv_res.exit_code) else max(dig_res.exit_code, resolv_res.exit_code)
     allowed = dig_res.allowed and resolv_res.allowed
 
     return ToolOutput(

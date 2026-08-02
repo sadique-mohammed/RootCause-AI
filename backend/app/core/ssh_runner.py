@@ -47,9 +47,13 @@ class SSHRunner:
         self.command_history: list[CommandResult] = []
 
     def connect(self) -> None:
-        """Establish SSH connection using Paramiko."""
+        """Establish the SSH connection."""
         if self._client is not None:
-            return
+            if self._client.get_transport() is not None and self._client.get_transport().is_active():
+                return
+            else:
+                self._client.close()
+                self._client = None
 
         client = paramiko.SSHClient()
         client.load_system_host_keys()
@@ -78,7 +82,10 @@ class SSHRunner:
             client.connect(**connect_kwargs)
             self._client = client
         except Exception as err:
-            raise RuntimeError(f"SSH connection failed to {self.username}@{self.host}: {err}") from err
+            client.close()
+            raise RuntimeError(
+                f"Failed to connect to {self.host} as {self.username}. Error: {err}"
+            ) from err
 
     def ping_connection(self) -> bool:
         """Synchronously ping/verify the SSH connection (pre-flight check)."""

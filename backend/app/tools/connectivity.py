@@ -29,6 +29,8 @@ CHECK_CONNECTIVITY_SCHEMA = {
                     "(default: 4, ignored for traceroute)"
                 ),
                 "default": 4,
+                "minimum": 1,
+                "maximum": 10,
             },
         },
         "required": ["target"],
