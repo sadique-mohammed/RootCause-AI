@@ -22,6 +22,8 @@ export interface DiagnosisRun {
   suggested_fix: string | null;
   summary: string | null;
   evidence: EvidenceItem[];
+  created_at: string;
+  completed_at: string | null;
 }
 
 export interface CommandLogItem {
